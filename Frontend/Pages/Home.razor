@@ -1,0 +1,18 @@
+﻿@page "/"
+<MudGrid>
+    <MudItem xs="12">
+        <MudText Typo = "Typo.h3" GutterBottom="true">Welcome to Nutrition Advisor!</MudText>
+        <MudText Typo = "Typo.body1">Here you can receive personalized recipe recommendations based on your dietary preferences and nutrition goals.</MudText>
+    </MudItem>
+    <MudItem xs="12" md = "6">    
+    <MudPaper Class = "pa-4">
+        <MudChart ChartType="ChartType.Pie" InputData = "@proc" InputLabels="@labels">
+
+        </MudChart>
+    </MudPaper>
+    </MudItem>
+</MudGrid>
+@code{
+    public double[] proc = new double[] { 50, 30, 20 };
+    public string[] labels = new string[] { "Proteins", "Carbohydrates", "Fats" };
+}
