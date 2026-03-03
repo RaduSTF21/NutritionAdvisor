@@ -1,17 +1,26 @@
 ﻿@page "/"
-<MudGrid>
-    <MudItem xs="12">
-        <MudText Typo = "Typo.h3" GutterBottom="true">Welcome to Nutrition Advisor!</MudText>
-        <MudText Typo = "Typo.body1">Here you can receive personalized recipe recommendations based on your dietary preferences and nutrition goals.</MudText>
-    </MudItem>
-    <MudItem xs="12" md = "6">    
-    <MudPaper Class = "pa-4">
-        <MudChart ChartType="ChartType.Pie" InputData = "@proc" InputLabels="@labels">
 
-        </MudChart>
-    </MudPaper>
-    </MudItem>
-</MudGrid>
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-16">
+    <MudGrid Justify="Justify.Center" AlignItems="AlignItems.Center">
+        
+        <MudItem xs="12" md="6">
+            <MudText Typo="Typo.h2" Color="Color.Primary" GutterBottom="true"><b>Welcome to Nutrition Advisor!</b></MudText>
+            <MudText Typo="Typo.h5" Class="mb-6">Achieve your health goals with AI-powered, personalized recipe recommendations tailored specifically to your body and dietary preferences.</MudText>
+            
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Class="mr-4" Href="/register">Create an Account</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Large" Href="/login">Login</MudButton>
+        </MudItem>
+
+        <MudItem xs="12" md="6">    
+            <MudPaper Class="pa-6" Elevation="3">
+                <MudText Typo="Typo.h6" Align="Align.Center" GutterBottom="true">Track Your Macros Easily</MudText>
+                <MudChart ChartType="ChartType.Pie" InputData="@proc" InputLabels="@labels" />
+            </MudPaper>
+        </MudItem>
+
+    </MudGrid>
+</MudContainer>
+
 @code{
     public double[] proc = new double[] { 50, 30, 20 };
     public string[] labels = new string[] { "Proteins", "Carbohydrates", "Fats" };

@@ -3,4 +3,17 @@
 GET {{NutritionAdvisor.API_HostAddress}}/weatherforecast/
 Accept: application/json
 
-###
+### Creare profil nou
+POST http://localhost:5066/api/UserProfie
+Content-Type: application/json
+
+{
+"id": "5a4b150c-5184-46ea-9a3d-4c3ab52d2f26",
+  "name": "Stefan",
+  "gender": "Masculin",
+  "objective": "Masa musculara",
+  "age": 25,
+  "weight": 80.5,
+  "height": 182.0,
+  "allergies": "Niciuna"
+}

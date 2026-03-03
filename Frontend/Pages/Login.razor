@@ -1,0 +1,32 @@
+@page "/login"
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-16">
+    <MudCard Elevation="3" Class="pa-8">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h4" Align="Align.Center"><b>Login</b></MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudTextField @bind-Value="email" Label="Email" Variant="Variant.Outlined" Class="mb-4" />
+            <MudTextField @bind-Value="password" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-6" />
+            
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="HandleLogin">Sign In</MudButton>
+            
+            <MudText Align="Align.Center" Class="mt-4">
+                Don't have an account? <MudLink Href="/register">Register here</MudLink>
+            </MudText>
+        </MudCardContent>
+    </MudCard>
+</MudContainer>
+
+@code {
+    private string email = "";
+    private string password = "";
+
+    private void HandleLogin()
+    {
+        // Aici vom adăuga logica pentru a apela API-ul tău de backend mai târziu
+        Console.WriteLine($"Login attempt for: {email}");
+    }
+}
