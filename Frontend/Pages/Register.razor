@@ -1,0 +1,54 @@
+@page "/register"
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-16">
+    <MudCard Elevation="3" Class="pa-8">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h4" Align="Align.Center"><b>Create Account</b></MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudTextField @bind-Value="name" Label="Full Name" Variant="Variant.Outlined" Class="mb-4" />
+            <MudTextField @bind-Value="email" Label="Email" Variant="Variant.Outlined" Class="mb-4" />
+            <MudTextField @bind-Value="password" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-4" />
+            
+            <MudTextField @bind-Value="confirmPassword" Label="Confirm Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-6" />
+            
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+            }
+            
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="HandleRegister">Sign Up</MudButton>
+            
+            <MudText Align="Align.Center" Class="mt-4">
+                Already have an account? <MudLink Href="/login">Login here</MudLink>
+            </MudText>
+        </MudCardContent>
+    </MudCard>
+</MudContainer>
+
+@code {
+    private string name = "";
+    private string email = "";
+    private string password = "";
+    private string confirmPassword = ""; // Variabilă nouă
+    
+    private string errorMessage = ""; // Variabilă pentru mesajul de eroare
+
+    private void HandleRegister()
+    {
+        // Resetăm mesajul de eroare la fiecare încercare
+        errorMessage = "";
+
+        // Validarea parolelor
+        if (password != confirmPassword)
+        {
+            errorMessage = "Passwords do not match. Please try again!";
+            return; // Oprim execuția aici, nu mergem mai departe
+        }
+
+        // Aici vom adăuga logica pentru crearea contului în backend (când va fi gata)
+        Console.WriteLine($"Register attempt successful for: {name} ({email})");
+    }
+}
