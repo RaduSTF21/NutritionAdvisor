@@ -1,8 +1,8 @@
-using NutritionAdvisor.Domain.Entities;
+using UserProfileEntity = NutritionAdvisor.Domain.Entities.UserProfile;
 
 namespace NutritionAdvisor.Application.Interfaces;
 
 public interface IUserProfileRepository
 {
-    Task SaveAsync(UserProfile userProfile);
+    Task SaveAsync(UserProfileEntity userProfile);
 }

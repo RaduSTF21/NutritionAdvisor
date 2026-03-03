@@ -1,6 +1,6 @@
 using MediatR;
 
-namespace NutritionAdvisor.Application.Commands.SaveUserProfile;
+namespace NutritionAdvisor.Application.UserProfile.Commands.SaveUserProfile;
 
 public class SaveUserProfileCommand : IRequest<Guid>
 {

@@ -1,6 +1,6 @@
 using NutritionAdvisor.Application.Interfaces;
 
-namespace NutritionAdvisor.Application.Commands.SaveUserProfile;
+namespace NutritionAdvisor.Application.UserProfile.Commands.SaveUserProfile;
 using MediatR;
 using System;
 using NutritionAdvisor.Domain.Entities;

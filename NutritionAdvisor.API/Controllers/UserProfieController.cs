@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using MediatR;
-using NutritionAdvisor.Application.Commands;
-using NutritionAdvisor.Application.Commands.SaveUserProfile;
+using NutritionAdvisor.Application.UserProfile.Commands;
+using NutritionAdvisor.Application.UserProfile.Commands.SaveUserProfile;
 
 
 namespace NutritionAdvisor.API.Controllers;

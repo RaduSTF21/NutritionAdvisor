@@ -1,4 +1,10 @@
 @page "/login"
+@using Blazored.LocalStorage
+@using Frontend.Auth
+@inject HttpClient Http
+@inject NavigationManager NavManager
+@inject ILocalStorageService LocalStorage
+@inject AuthenticationStateProvider AuthStateProvider
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-16">
     <MudCard Elevation="3" Class="pa-8">
@@ -11,7 +17,14 @@
             <MudTextField @bind-Value="email" Label="Email" Variant="Variant.Outlined" Class="mb-4" />
             <MudTextField @bind-Value="password" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-6" />
             
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="HandleLogin">Sign In</MudButton>
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+            }
+            
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="HandleLogin" Disabled="@isLoading">
+                @if (isLoading) { <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true"/> } else { <span>Sign In</span> }
+            </MudButton>
             
             <MudText Align="Align.Center" Class="mt-4">
                 Don't have an account? <MudLink Href="/register">Register here</MudLink>
@@ -23,10 +36,52 @@
 @code {
     private string email = "";
     private string password = "";
+    private string errorMessage = "";
+    private bool isLoading = false;
 
-    private void HandleLogin()
+    private async Task HandleLogin()
     {
-        // Aici vom adăuga logica pentru a apela API-ul tău de backend mai târziu
-        Console.WriteLine($"Login attempt for: {email}");
+        errorMessage = "";
+        isLoading = true;
+
+        var loginCommand = new { Email = email, Password = password };
+
+        try
+        {
+            // ATENȚIE: Pune portul API-ului tău (la fel ca la Register)
+            var response = await Http.PostAsJsonAsync("http://localhost:5066/api/Auth/login", loginCommand);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
+                if (result != null && !string.IsNullOrEmpty(result.Token))
+                {
+                    // 1. Salvăm token-ul în browser
+                    await LocalStorage.SetItemAsync("authToken", result.Token);
+                    
+                    // 2. Anunțăm sistemul că ne-am logat
+                    ((CustomAuthStateProvider)AuthStateProvider).MarkUserAsAuthenticated(result.Token);
+                    
+                    // 3. Mergem direct pe pagina de Profil!
+                    NavManager.NavigateTo("/profil");
+                }
+            }
+            else
+            {
+                var errorResult = await response.Content.ReadFromJsonAsync<ErrorResponse>();
+                errorMessage = errorResult?.Error ?? "Invalid email or password.";
+            }
+        }
+        catch (Exception)
+        {
+            errorMessage = "Could not connect to the server.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
+
+    private class LoginResponse { public string? Token { get; set; } }
+    private class ErrorResponse { public string? Error { get; set; } }
 }
