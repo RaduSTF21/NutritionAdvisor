@@ -8,11 +8,11 @@ namespace NutritionAdvisor.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class UserProfieController:ControllerBase
+public class UserProfileController:ControllerBase
 {
     private readonly IMediator _mediator;
     
-    public UserProfieController(IMediator mediator)
+    public UserProfileController(IMediator mediator)
     {
         _mediator = mediator;
     }

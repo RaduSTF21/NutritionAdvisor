@@ -1,16 +1,19 @@
 using MediatR;
 using NutritionAdvisor.Application.Interfaces;
 using NutritionAdvisor.Domain.Entities;
+using UserProfileEntity = NutritionAdvisor.Domain.Entities.UserProfile;
 
 namespace NutritionAdvisor.Application.Users.Commands.RegisterUser;
 
 public class RegisterUserCommandHandler : IRequestHandler<RegisterUserCommand, Guid>
 {
     private readonly IUserRepository _userRepository;
+    private readonly IUserProfileRepository _userProfileRepository;
 
-    public RegisterUserCommandHandler(IUserRepository userRepository)
+    public RegisterUserCommandHandler(IUserRepository userRepository, IUserProfileRepository userProfileRepository)
     {
         _userRepository = userRepository;
+        _userProfileRepository = userProfileRepository;
     }
 
     public async Task<Guid> Handle(RegisterUserCommand request, CancellationToken cancellationToken)
@@ -32,8 +35,24 @@ public class RegisterUserCommandHandler : IRequestHandler<RegisterUserCommand, G
             CreatedAt = DateTime.UtcNow
         };
 
-        // Salvăm
+        // Salvăm user-ul
         await _userRepository.AddAsync(newUser, cancellationToken);
+
+        // Creăm automat un UserProfile cu numele din registrare
+        var userProfile = new UserProfileEntity
+        {
+            Id = Guid.NewGuid(),
+            UserId = newUser.Id,
+            Name = request.Name,
+            Gender = string.Empty,
+            Age = 0,
+            Height = 0,
+            Weight = 0,
+            Allergies = null,
+            Objective = null
+        };
+
+        await _userProfileRepository.SaveAsync(userProfile);
 
         return newUser.Id;
     }

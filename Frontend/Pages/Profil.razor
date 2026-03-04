@@ -1,7 +1,9 @@
 @page "/profil"
 @using MudBlazor
 @using NutritionAdvisor.Domain.Entities
+@using System.Security.Claims
 @inject HttpClient Http
+@inject AuthenticationStateProvider AuthStateProvider
 
 <AuthorizeView>
     <Authorized>
@@ -49,17 +51,43 @@
 </AuthorizeView>
 @code {
     private bool editing = false;
+    private Guid currentUserId = Guid.Empty;
     private UserProfile user = new UserProfile
     {
         Id = Guid.NewGuid(),
+        UserId = Guid.Empty,
         Name = "",
         Gender = "",
         Objective = "",
-        Allergies = ""}
-        ;
+        Allergies = ""
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obținem UserId din claims
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userClaim = authState.User;
+        
+        if (userClaim.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = userClaim.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
+            {
+                currentUserId = userId;
+                user.UserId = userId;
+                
+                // TODO: Încarcă profilul existent din API
+                // var existingProfile = await Http.GetFromJsonAsync<UserProfile>($"api/UserProfile/{userId}");
+                // if (existingProfile != null) user = existingProfile;
+            }
+        }
+    }
+    
     private async Task SaveProfile()
     {
-        // Aici ai putea adauga logica pentru a salva profilul utilizatorului, de exemplu trimitand datele catre un API
+        // Asigurăm că UserId e setat
+        user.UserId = currentUserId;
+        
         await Http.PostAsJsonAsync("api/userprofile", user);
         editing = false;
     }

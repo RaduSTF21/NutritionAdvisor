@@ -63,8 +63,7 @@
 
         try
         {
-            // ATENȚIE: Aici trebuie să pui portul corect al API-ului tău (acel 5066 sau pe care rulează el)
-            var response = await Http.PostAsJsonAsync("http://localhost:5066/api/Auth/register", registerCommand);
+            var response = await Http.PostAsJsonAsync("api/Auth/register", registerCommand);
 
             if (response.IsSuccessStatusCode)
             {

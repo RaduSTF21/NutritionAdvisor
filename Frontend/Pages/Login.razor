@@ -48,8 +48,7 @@
 
         try
         {
-            // ATENȚIE: Pune portul API-ului tău (la fel ca la Register)
-            var response = await Http.PostAsJsonAsync("http://localhost:5066/api/Auth/login", loginCommand);
+            var response = await Http.PostAsJsonAsync("api/Auth/login", loginCommand);
 
             if (response.IsSuccessStatusCode)
             {
