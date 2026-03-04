@@ -54,7 +54,6 @@
     private Guid currentUserId = Guid.Empty;
     private UserProfile user = new UserProfile
     {
-        Id = Guid.NewGuid(),
         UserId = Guid.Empty,
         Name = "",
         Gender = "",
@@ -62,9 +61,9 @@
         Allergies = ""
     };
 
+    // Această metodă o înlocuiește pe cea veche
     protected override async Task OnInitializedAsync()
     {
-        // Obținem UserId din claims
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var userClaim = authState.User;
         
@@ -76,20 +75,34 @@
                 currentUserId = userId;
                 user.UserId = userId;
                 
-                // TODO: Încarcă profilul existent din API
-                // var existingProfile = await Http.GetFromJsonAsync<UserProfile>($"api/UserProfile/{userId}");
-                // if (existingProfile != null) user = existingProfile;
+                try 
+                {
+                    // Folosim ruta relativă deoarece ai setat BaseAddress în Program.cs
+                    var existingProfile = await Http.GetFromJsonAsync<UserProfile>($"api/UserProfile/{userId}");
+                    
+                    if (existingProfile != null) 
+                    {
+                        user = existingProfile;
+                    }
+                    else 
+                    {
+                        editing = true; // Profil inexistent -> deschidem formularul
+                    }
+                }
+                catch (Exception)
+                {
+                    editing = true; // Eroare la găsire -> deschidem formularul
+                }
             }
         }
     }
     
     private async Task SaveProfile()
     {
-        // Asigurăm că UserId e setat
         user.UserId = currentUserId;
         
+        // La fel, folosim adresa relativă
         await Http.PostAsJsonAsync("api/userprofile", user);
         editing = false;
     }
-    
 }

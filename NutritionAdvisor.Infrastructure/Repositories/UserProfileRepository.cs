@@ -42,7 +42,11 @@ public class UserProfileRepository : IUserProfileRepository
         
         await _dbContext.SaveChangesAsync();
     }
-    
+
+    public async Task<UserProfile?> GetUserProfileAsync(Guid userId, CancellationToken cancellationToken)    {
+        return await _dbContext.UserProfiles
+            .FirstOrDefaultAsync(up => up.UserId == userId, cancellationToken);
+    }
     public async Task<UserProfile?> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         return await _dbContext.UserProfiles

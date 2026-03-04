@@ -16,7 +16,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="UserProfile\" />
       <Folder Include="Users\Commands\" />
     </ItemGroup>
 

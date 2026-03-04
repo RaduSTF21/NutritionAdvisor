@@ -28,7 +28,7 @@ public class RegisterUserCommandHandler : IRequestHandler<RegisterUserCommand, G
         // Creăm user-ul
         var newUser = new User
         {
-            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
             Name = request.Name,
             Email = request.Email,
             PasswordHash = hashedPassword,
@@ -41,8 +41,7 @@ public class RegisterUserCommandHandler : IRequestHandler<RegisterUserCommand, G
         // Creăm automat un UserProfile cu numele din registrare
         var userProfile = new UserProfileEntity
         {
-            Id = Guid.NewGuid(),
-            UserId = newUser.Id,
+            UserId = newUser.UserId,
             Name = request.Name,
             Gender = string.Empty,
             Age = 0,
@@ -54,6 +53,6 @@ public class RegisterUserCommandHandler : IRequestHandler<RegisterUserCommand, G
 
         await _userProfileRepository.SaveAsync(userProfile);
 
-        return newUser.Id;
+        return newUser.UserId;
     }
 }

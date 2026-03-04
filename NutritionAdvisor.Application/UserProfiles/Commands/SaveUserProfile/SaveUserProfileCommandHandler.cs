@@ -1,6 +1,6 @@
 using NutritionAdvisor.Application.Interfaces;
 
-namespace NutritionAdvisor.Application.UserProfile.Commands.SaveUserProfile;
+namespace NutritionAdvisor.Application.UserProfiles.Commands.SaveUserProfile;
 using MediatR;
 using System;
 using UserProfileEntity = NutritionAdvisor.Domain.Entities.UserProfile;
@@ -12,8 +12,7 @@ public class SaveUserProfileCommandHandler:IRequestHandler<SaveUserProfileComman
     {
         var userProfile = new UserProfileEntity
         {
-            Id = request.Id == Guid.Empty ? Guid.NewGuid() : request.Id,
-            UserId = request.UserId,
+            UserId = request.Id == Guid.Empty ? Guid.NewGuid() : request.Id,
             Name = request.Name,
             Gender = request.Gender ?? string.Empty,
             Age = request.Age,
@@ -24,7 +23,7 @@ public class SaveUserProfileCommandHandler:IRequestHandler<SaveUserProfileComman
         };
         await _userProfileRepository.SaveAsync(userProfile);
         
-        return userProfile.Id;
+        return userProfile.UserId;
 
     }
     public SaveUserProfileCommandHandler(IUserProfileRepository userProfileRepository)
