@@ -16,16 +16,16 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
-        // 1. Căutăm biletul în memoria browserului
+        // 1. Look for the token in browser storage.
         var token = await _localStorage.GetItemAsync<string>("authToken");
 
-        // 2. Dacă nu e, ești vizitator nelogat
+        // 2. If it is missing, the user is anonymous.
         if (string.IsNullOrWhiteSpace(token))
         {
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
 
-        // 3. Dacă îl avem, îl decodăm și creăm identitatea utilizatorului
+        // 3. If present, decode it and create the authenticated identity.
         var claims = ParseClaimsFromJwt(token);
         var identity = new ClaimsIdentity(claims, "jwt");
         var user = new ClaimsPrincipal(identity);
@@ -33,7 +33,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         return new AuthenticationState(user);
     }
 
-    // Această funcție va fi apelată imediat după ce dăm click pe "Login" cu succes
+    // This is called immediately after a successful login.
     public void MarkUserAsAuthenticated(string token)
     {
         var claims = ParseClaimsFromJwt(token);
@@ -50,7 +50,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(anonymous)));
     }
 
-    // Magie C# pentru a citi ce se află în interiorul Token-ului JWT
+    // Parse the claims stored inside the JWT payload.
     private IEnumerable<Claim> ParseClaimsFromJwt(string jwt)
     {
         var payload = jwt.Split('.')[1];

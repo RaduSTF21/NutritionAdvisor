@@ -16,6 +16,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <Folder Include="Ingredients\Queries\" />
       <Folder Include="Users\Commands\" />
     </ItemGroup>
 

@@ -17,13 +17,13 @@ public class UserProfileRepository : IUserProfileRepository
     
     public async Task SaveAsync(UserProfile profile)
     {
-        // Verificăm dacă există deja un profile pentru acest user
+        // Check whether a profile already exists for this user.
         var existingProfile = await _dbContext.UserProfiles
             .FirstOrDefaultAsync(p => p.UserId == profile.UserId);
         
         if (existingProfile != null)
         {
-            // Update: păstrăm Id-ul existent și actualizăm restul câmpurilor
+            // Keep the existing ID and update the remaining fields.
             existingProfile.Name = profile.Name;
             existingProfile.Gender = profile.Gender;
             existingProfile.Age = profile.Age;
@@ -36,7 +36,7 @@ public class UserProfileRepository : IUserProfileRepository
         }
         else
         {
-            // Insert: adăugăm un profil nou
+            // Insert a new profile.
             _dbContext.UserProfiles.Add(profile);
         }
         

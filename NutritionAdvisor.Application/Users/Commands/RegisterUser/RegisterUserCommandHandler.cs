@@ -18,14 +18,14 @@ public class RegisterUserCommandHandler : IRequestHandler<RegisterUserCommand, G
 
     public async Task<Guid> Handle(RegisterUserCommand request, CancellationToken cancellationToken)
     {
-        // Verificăm dacă email-ul există deja
+        // Check whether the email address is already registered.
         var existingUser = await _userRepository.GetByEmailAsync(request.Email, cancellationToken);
-        if (existingUser != null) throw new Exception("Acest email este deja folosit!");
+        if (existingUser != null) throw new Exception("This email address is already in use.");
 
-        // Criptăm parola cu BCrypt
+        // Hash the password with BCrypt.
         string hashedPassword = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-        // Creăm user-ul
+        // Create the user record.
         var newUser = new User
         {
             UserId = Guid.NewGuid(),
@@ -35,10 +35,10 @@ public class RegisterUserCommandHandler : IRequestHandler<RegisterUserCommand, G
             CreatedAt = DateTime.UtcNow
         };
 
-        // Salvăm user-ul
+        // Persist the user.
         await _userRepository.AddAsync(newUser, cancellationToken);
 
-        // Creăm automat un UserProfile cu numele din registrare
+        // Automatically create a matching user profile.
         var userProfile = new UserProfileEntity
         {
             UserId = newUser.UserId,

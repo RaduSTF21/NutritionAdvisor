@@ -3,5 +3,5 @@ using NutritionAdvisor.Domain.Entities;
 
 namespace NutritionAdvisor.Application.UserProfiles.Queries.GetUserProfile;
 
-// Interogarea cere un profil pe baza unui Id și promite să returneze un obiect UserProfile
+// Query that loads a user profile by user ID.
 public record GetUserProfileQuery(Guid UserId) : IRequest<UserProfile?>;

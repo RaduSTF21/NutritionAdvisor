@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -8,9 +9,21 @@ using NutritionAdvisor.Infrastructure.Repositories;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-builder.Services.AddControllers();
+
+// Configure enum serialization and ignore object reference cycles.
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Serialize enum values as strings such as Easy and Medium.
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        
+        // Prevent JSON serialization errors caused by circular references.
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    });
+
+// Enable Swagger generation for the API UI.
+builder.Services.AddSwaggerGen();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -31,12 +44,16 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddDbContext<NutritionAdvisor.Infrastructure.Databases.ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Register handlers from the application assembly.
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(NutritionAdvisor.Application.UserProfiles.Commands.SaveUserProfile.SaveUserProfileCommand).Assembly));
 
 builder.Services.AddScoped<NutritionAdvisor.Application.Interfaces.IUserProfileRepository, NutritionAdvisor.Infrastructure.Repositories.UserProfileRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IRecipeRepository, RecipeRepository>();
+builder.Services.AddScoped<IIngredientRepository, IngredientRepository>();
 
-// Configurăm CORS din appsettings pentru a suporta deployments flexibile
+// Configure CORS.
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
                      ?? new[] { "http://localhost:5210" };
 
@@ -48,21 +65,28 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod()
             .AllowAnyHeader());
 });
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    
+    // Enable the Swagger UI middleware in development.
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/openapi/v1.json", "Nutrition Advisor API v1");
+    });
 }
 
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
+
 app.UseCors("AllowBlazorOrigin");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-
 app.Run();
-

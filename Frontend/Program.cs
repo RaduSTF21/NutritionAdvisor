@@ -9,10 +9,10 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-// Configurăm API base URL din appsettings
+// Configure the API base URL from appsettings.
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5066";
 
-// HttpClient pentru API-ul backend
+// HttpClient used for the backend API.
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(apiBaseUrl) });
 
 builder.Services.AddMudServices();

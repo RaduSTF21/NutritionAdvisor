@@ -55,14 +55,14 @@
                 var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
                 if (result != null && !string.IsNullOrEmpty(result.Token))
                 {
-                    // 1. Salvăm token-ul în browser
+                    // 1. Store the token in browser storage.
                     await LocalStorage.SetItemAsync("authToken", result.Token);
                     
-                    // 2. Anunțăm sistemul că ne-am logat
+                    // 2. Notify the app that authentication succeeded.
                     ((CustomAuthStateProvider)AuthStateProvider).MarkUserAsAuthenticated(result.Token);
                     
-                    // 3. Mergem direct pe pagina de Profil!
-                    NavManager.NavigateTo("/profil");
+                    // 3. Redirect straight to the profile page.
+                    NavManager.NavigateTo("/profile");
                 }
             }
             else

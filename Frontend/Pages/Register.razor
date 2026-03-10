@@ -58,7 +58,7 @@
 
         isLoading = true;
 
-        // Creăm pachetul de date exact cum îl așteaptă backend-ul
+        // Create the payload in the exact format expected by the backend.
         var registerCommand = new { Name = name, Email = email, Password = password };
 
         try
@@ -68,14 +68,14 @@
             if (response.IsSuccessStatusCode)
             {
                 showSuccessMessage = true;
-                StateHasChanged(); // Forțăm interfața să arate mesajul verde
+                StateHasChanged(); // Force the UI to render the success message.
                 
-                await Task.Delay(2000); // Așteptăm 2 secunde ca userul să citească mesajul
-                NavManager.NavigateTo("/login"); // Îl trimitem la pagina de login
+                await Task.Delay(2000); // Wait 2 seconds so the user can read the message.
+                NavManager.NavigateTo("/login"); // Redirect to the login page.
             }
             else
             {
-                // Dacă email-ul există deja, prindem eroarea de la backend
+                // If the email already exists, surface the backend error.
                 var errorResult = await response.Content.ReadFromJsonAsync<ErrorResponse>();
                 errorMessage = errorResult?.Error ?? "Registration failed. Please try again.";
             }
@@ -90,6 +90,6 @@
         }
     }
 
-    // O clasă mică pentru a citi formatul de eroare pe care l-am setat în AuthController
+    // Small helper type for reading the error payload returned by AuthController.
     private class ErrorResponse { public string? Error { get; set; } }
 }

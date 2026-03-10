@@ -1,4 +1,4 @@
-@page "/profil"
+@page "/profile"
 @using MudBlazor
 @using NutritionAdvisor.Domain.Entities
 @using System.Security.Claims
@@ -9,7 +9,7 @@
     <Authorized>
         @if(editing)
             {
-                <MudText Typo = "Typo.h3" GutterBottom="true">Editeaza profilul</MudText>
+                <MudText Typo = "Typo.h3" GutterBottom="true">Edit Profile</MudText>
                 <MudTextField Label="Name" @bind-Value="user.Name" />
                 <MudSelect Label="Gender" @bind-Value="user.Gender">
                     <MudSelectItem Value="@("Male")">Male</MudSelectItem>
@@ -61,7 +61,7 @@
         Allergies = ""
     };
 
-    // Această metodă o înlocuiește pe cea veche
+    // This replaces the previous initialization method.
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -77,7 +77,7 @@
                 
                 try 
                 {
-                    // Folosim ruta relativă deoarece ai setat BaseAddress în Program.cs
+                    // Use the relative route because Program.cs sets the BaseAddress.
                     var existingProfile = await Http.GetFromJsonAsync<UserProfile>($"api/UserProfile/{userId}");
                     
                     if (existingProfile != null) 
@@ -86,12 +86,12 @@
                     }
                     else 
                     {
-                        editing = true; // Profil inexistent -> deschidem formularul
+                        editing = true; // No profile yet, so open the form.
                     }
                 }
                 catch (Exception)
                 {
-                    editing = true; // Eroare la găsire -> deschidem formularul
+                    editing = true; // Lookup failed, so open the form.
                 }
             }
         }
@@ -101,7 +101,7 @@
     {
         user.UserId = currentUserId;
         
-        // La fel, folosim adresa relativă
+        // Same here: use the relative address.
         await Http.PostAsJsonAsync("api/userprofile", user);
         editing = false;
     }

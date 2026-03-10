@@ -1,11 +1,10 @@
-namespace NutritionAdvisor.Domain.Entities;
+using MediatR;
 
-public class Ingredient
+namespace NutritionAdvisor.Application.Ingredients.Commands.CreateIngredient;
+
+public class CreateIngredientCommand : IRequest<Guid>
 {
-    public Guid Id { get; init; }
     public required string Name { get; set; }
-
-    // Values per 100g/ml.
     public float Calories { get; set; }
     public float Protein { get; set; }
     public float Carbohydrates { get; set; }
@@ -13,8 +12,7 @@ public class Ingredient
     public float Fiber { get; set; }
     public float Sugar { get; set; }
     public float Sodium { get; set; }
-
-    // AI-facing indicators (allergens and diet compatibility).
+    
     public bool IsGlutenFree { get; set; }
     public bool IsDairyFree { get; set; }
     public bool IsVegan { get; set; }

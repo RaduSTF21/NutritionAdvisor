@@ -1,0 +1,71 @@
+@page "/recipes"
+@using Frontend.Models
+@inject HttpClient Http
+
+<PageTitle>Recipe Catalog</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>🥗 Available Recipes</h1>
+        <button class="btn btn-success">+ New Recipe</button>
+    </div>
+
+    @if (recipes == null)
+    {
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p>Loading recipes...</p>
+        </div>
+    }
+    else if (!recipes.Any())
+    {
+        <div class="alert alert-info">There are no recipes yet. Add one from Swagger.</div>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var recipe in recipes)
+            {
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 shadow-sm">
+                            <img src="@(string.IsNullOrEmpty(recipe.ImageURL) ? "https://via.placeholder.com/300x200?text=Recipe" : recipe.ImageURL)" 
+                                class="card-img-top" alt="Recipe image">
+                        <div class="card-body">
+                            <h5 class="card-title">@recipe.Title</h5>
+                            <p class="text-muted small">⏱ @recipe.CookingTimeInMinutes min | 📊 @recipe.Level</p>
+                            
+                            <div class="nutrition-summary p-2 bg-light rounded">
+                                <div class="row text-center">
+                                    <div class="col"><strong>@recipe.TotalCalories.ToString("F0")</strong><br/><small>kcal</small></div>
+                                    <div class="col text-primary"><strong>@recipe.TotalProtein.ToString("F1")g</strong><br/><small>P</small></div>
+                                    <div class="col text-success"><strong>@recipe.TotalCarbs.ToString("F1")g</strong><br/><small>C</small></div>
+                                    <div class="col text-danger"><strong>@recipe.TotalFats.ToString("F1")g</strong><br/><small>F</small></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white border-top-0">
+                            <button class="btn btn-outline-primary w-100">View details</button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<RecipeModel>? recipes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Call the GET endpoint exposed by RecipesController.
+            recipes = await Http.GetFromJsonAsync<List<RecipeModel>>("api/Recipes");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Loading error: {ex.Message}");
+        }
+    }
+}
