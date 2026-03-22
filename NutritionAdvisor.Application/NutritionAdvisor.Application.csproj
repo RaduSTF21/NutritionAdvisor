@@ -15,4 +15,9 @@
       <ProjectReference Include="..\NutritionAdvisor.Domain\NutritionAdvisor.Domain.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Ingredients\Queries\" />
+      <Folder Include="Users\Commands\" />
+    </ItemGroup>
+
 </Project>

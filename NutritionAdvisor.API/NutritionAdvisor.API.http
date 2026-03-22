@@ -17,3 +17,13 @@ Content-Type: application/json
   "height": 182.0,
   "allergies": "Niciuna"
 }
+
+### Creare Cont Nou (Register)
+POST http://localhost:5066/api/Auth/register
+Content-Type: application/json
+
+{
+  "name": "Stefan",
+  "email": "stefan@test.com",
+  "password": "ParolaMeaSuperSecreta123!"
+}

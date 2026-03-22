@@ -9,16 +9,47 @@ namespace NutritionAdvisor.Infrastructure.Repositories;
 public class UserProfileRepository : IUserProfileRepository
 {
     private readonly ApplicationDbContext _dbContext;
-    public async Task SaveAsync(UserProfile profile)
-    {
-        _dbContext.UserProfiles.Add(profile);
-        await _dbContext.SaveChangesAsync();
-        
-    }
+    
     public UserProfileRepository(ApplicationDbContext dbContext)
     {
         _dbContext = dbContext;
-        
     }
     
+    public async Task SaveAsync(UserProfile profile)
+    {
+        // Check whether a profile already exists for this user.
+        var existingProfile = await _dbContext.UserProfiles
+            .FirstOrDefaultAsync(p => p.UserId == profile.UserId);
+        
+        if (existingProfile != null)
+        {
+            // Keep the existing ID and update the remaining fields.
+            existingProfile.Name = profile.Name;
+            existingProfile.Gender = profile.Gender;
+            existingProfile.Age = profile.Age;
+            existingProfile.Height = profile.Height;
+            existingProfile.Weight = profile.Weight;
+            existingProfile.Allergies = profile.Allergies;
+            existingProfile.Objective = profile.Objective;
+            
+            _dbContext.UserProfiles.Update(existingProfile);
+        }
+        else
+        {
+            // Insert a new profile.
+            _dbContext.UserProfiles.Add(profile);
+        }
+        
+        await _dbContext.SaveChangesAsync();
+    }
+
+    public async Task<UserProfile?> GetUserProfileAsync(Guid userId, CancellationToken cancellationToken)    {
+        return await _dbContext.UserProfiles
+            .FirstOrDefaultAsync(up => up.UserId == userId, cancellationToken);
+    }
+    public async Task<UserProfile?> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.UserProfiles
+            .FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
+    }
 }

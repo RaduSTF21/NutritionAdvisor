@@ -1,18 +1,45 @@
 ﻿@inherits LayoutComponentBase
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using Frontend.Auth
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
 
-<MudThemeProvider/>
-<MudDialogProvider/>
-<MudSnackbarProvider/>
+<MudThemeProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+<MudPopoverProvider />
 
 <MudLayout>
     <MudAppBar Elevation="1">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />    
-        <MudText Typo ="Typo.h5" Class="ml-3"> AI Nutrition</MudText>
+        <MudText Typo ="Typo.h5" Class="ml-3">AI Nutrition Advisor</MudText>
+        
+        <MudSpacer />
+
+        <AuthorizeView>
+            <Authorized>
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                    <ActivatorContent>
+                        <MudAvatar Color="Color.Secondary" Variant="Variant.Filled">
+                            @context.User.Identity?.Name?[0]
+                        </MudAvatar>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Person" href="/profile">My Profile</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="HandleLogout">Logout</MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+            </Authorized>
+            <NotAuthorized>
+                <MudButton Color="Color.Inherit" href="/login">Login</MudButton>
+            </NotAuthorized>
+        </AuthorizeView>
     </MudAppBar>
     
     <MudDrawer @bind-Open="_drawerOpen" Elevation="2">
         <MudDrawerHeader>
-            <MudText Typo="Typo.h6">Menu</MudText>
+            <MudText Typo="Typo.h6">Navigation</MudText>
         </MudDrawerHeader>
         <NavMenu />
     </MudDrawer>
@@ -27,13 +54,14 @@
 @code {
     private bool _drawerOpen = true;
 
-    private void DrawerToggle()
+    private void DrawerToggle() => _drawerOpen = !_drawerOpen;
+
+    private async Task HandleLogout()
     {
-        _drawerOpen = !_drawerOpen;
+        if (AuthStateProvider is CustomAuthStateProvider customAuthProvider)
+        {
+            await customAuthProvider.MarkUserAsLoggedOut();
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
     }
 }
-
-<MudThemeProvider />
-<MudDialogProvider />
-<MudSnackbarProvider />
-<MudPopoverProvider />

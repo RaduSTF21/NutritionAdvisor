@@ -1,4 +1,6 @@
 @page "/register"
+@inject HttpClient Http
+@inject NavigationManager NavManager
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-16">
     <MudCard Elevation="3" Class="pa-8">
@@ -11,15 +13,20 @@
             <MudTextField @bind-Value="name" Label="Full Name" Variant="Variant.Outlined" Class="mb-4" />
             <MudTextField @bind-Value="email" Label="Email" Variant="Variant.Outlined" Class="mb-4" />
             <MudTextField @bind-Value="password" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-4" />
-            
             <MudTextField @bind-Value="confirmPassword" Label="Confirm Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-6" />
             
             @if (!string.IsNullOrEmpty(errorMessage))
             {
                 <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
             }
+            @if (showSuccessMessage)
+            {
+                <MudAlert Severity="Severity.Success" Class="mb-4">Account created successfully! Redirecting...</MudAlert>
+            }
             
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="HandleRegister">Sign Up</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="HandleRegister" Disabled="@isLoading">
+                @if (isLoading) { <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true"/> } else { <span>Sign Up</span> }
+            </MudButton>
             
             <MudText Align="Align.Center" Class="mt-4">
                 Already have an account? <MudLink Href="/login">Login here</MudLink>
@@ -32,23 +39,57 @@
     private string name = "";
     private string email = "";
     private string password = "";
-    private string confirmPassword = ""; // Variabilă nouă
+    private string confirmPassword = "";
     
-    private string errorMessage = ""; // Variabilă pentru mesajul de eroare
+    private string errorMessage = "";
+    private bool showSuccessMessage = false;
+    private bool isLoading = false;
 
-    private void HandleRegister()
+    private async Task HandleRegister()
     {
-        // Resetăm mesajul de eroare la fiecare încercare
         errorMessage = "";
+        showSuccessMessage = false;
 
-        // Validarea parolelor
         if (password != confirmPassword)
         {
             errorMessage = "Passwords do not match. Please try again!";
-            return; // Oprim execuția aici, nu mergem mai departe
+            return;
         }
 
-        // Aici vom adăuga logica pentru crearea contului în backend (când va fi gata)
-        Console.WriteLine($"Register attempt successful for: {name} ({email})");
+        isLoading = true;
+
+        // Create the payload in the exact format expected by the backend.
+        var registerCommand = new { Name = name, Email = email, Password = password };
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/Auth/register", registerCommand);
+
+            if (response.IsSuccessStatusCode)
+            {
+                showSuccessMessage = true;
+                StateHasChanged(); // Force the UI to render the success message.
+                
+                await Task.Delay(2000); // Wait 2 seconds so the user can read the message.
+                NavManager.NavigateTo("/login"); // Redirect to the login page.
+            }
+            else
+            {
+                // If the email already exists, surface the backend error.
+                var errorResult = await response.Content.ReadFromJsonAsync<ErrorResponse>();
+                errorMessage = errorResult?.Error ?? "Registration failed. Please try again.";
+            }
+        }
+        catch (Exception)
+        {
+            errorMessage = "Could not connect to the server. Is the API running?";
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
+
+    // Small helper type for reading the error payload returned by AuthController.
+    private class ErrorResponse { public string? Error { get; set; } }
 }

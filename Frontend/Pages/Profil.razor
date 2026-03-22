@@ -1,13 +1,15 @@
-@page "/profil"
+@page "/profile"
 @using MudBlazor
 @using NutritionAdvisor.Domain.Entities
+@using System.Security.Claims
 @inject HttpClient Http
+@inject AuthenticationStateProvider AuthStateProvider
 
 <AuthorizeView>
     <Authorized>
         @if(editing)
             {
-                <MudText Typo = "Typo.h3" GutterBottom="true">Editeaza profilul</MudText>
+                <MudText Typo = "Typo.h3" GutterBottom="true">Edit Profile</MudText>
                 <MudTextField Label="Name" @bind-Value="user.Name" />
                 <MudSelect Label="Gender" @bind-Value="user.Gender">
                     <MudSelectItem Value="@("Male")">Male</MudSelectItem>
@@ -49,19 +51,58 @@
 </AuthorizeView>
 @code {
     private bool editing = false;
+    private Guid currentUserId = Guid.Empty;
     private UserProfile user = new UserProfile
     {
-        Id = Guid.NewGuid(),
+        UserId = Guid.Empty,
         Name = "",
         Gender = "",
         Objective = "",
-        Allergies = ""}
-        ;
+        Allergies = ""
+    };
+
+    // This replaces the previous initialization method.
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userClaim = authState.User;
+        
+        if (userClaim.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = userClaim.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
+            {
+                currentUserId = userId;
+                user.UserId = userId;
+                
+                try 
+                {
+                    // Use the relative route because Program.cs sets the BaseAddress.
+                    var existingProfile = await Http.GetFromJsonAsync<UserProfile>($"api/UserProfile/{userId}");
+                    
+                    if (existingProfile != null) 
+                    {
+                        user = existingProfile;
+                    }
+                    else 
+                    {
+                        editing = true; // No profile yet, so open the form.
+                    }
+                }
+                catch (Exception)
+                {
+                    editing = true; // Lookup failed, so open the form.
+                }
+            }
+        }
+    }
+    
     private async Task SaveProfile()
     {
-        // Aici ai putea adauga logica pentru a salva profilul utilizatorului, de exemplu trimitand datele catre un API
+        user.UserId = currentUserId;
+        
+        // Same here: use the relative address.
         await Http.PostAsJsonAsync("api/userprofile", user);
         editing = false;
     }
-    
 }

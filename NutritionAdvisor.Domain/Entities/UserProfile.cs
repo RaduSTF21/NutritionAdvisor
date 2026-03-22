@@ -1,10 +1,11 @@
 namespace NutritionAdvisor.Domain.Entities;
-
-public record UserProfile
-{
-    required public Guid Id { get; init; }
+using System.ComponentModel.DataAnnotations;
+public class UserProfile
+{ 
+    [Key]
+    required public Guid UserId { get; set; }
     required public string Name { get; set; }
-    required public string Gender { get; set; }
+    public string Gender { get; set; } = string.Empty;
     public int Age { get; set; }
     public double Height { get; set; }
     public double Weight { get; set; }
