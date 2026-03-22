@@ -1,0 +1,116 @@
+@page "/dashboard"
+@using MudBlazor
+@using System.Net.Http.Json
+@using System.Security.Claims
+@using NutritionAdvisor.Domain.Entities
+@using Frontend.Models
+@inject HttpClient Http
+@inject AuthenticationStateProvider AuthStateProvider
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
+    <MudText Typo="Typo.h4" GutterBottom="true">👋 Welcome back!</MudText>
+    <MudText Typo="Typo.body1" Class="mb-8">Here is a quick overview of your nutrition status and the recipe catalog.
+    </MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
+                <MudText Typo="Typo.h6" GutterBottom="true">📉 Body Stats</MudText>
+                @if (userProfile == null)
+                {
+                    <MudText Typo="Typo.body2">No profile data found. Please complete your profile.</MudText>
+                }
+                else
+                {
+                    <div class="d-flex justify-space-between mb-2">
+                        <MudText Typo="Typo.body1">Current Weight:</MudText>
+                        <MudText Typo="Typo.body1"><b>@userProfile.Weight kg</b></MudText>
+                    </div>
+                    <div class="d-flex justify-space-between mb-4">
+                        <MudText Typo="Typo.body1">BMI (Body Mass Index):</MudText>
+                        <MudText Typo="Typo.body1" Color="@GetBmiColor(CalculateBmi())">
+                            <b>@CalculateBmi().ToString("F1")</b></MudText>
+                        </div>
+                        <MudAlert Severity="@GetBmiSeverity(CalculateBmi())" Variant="Variant.Filled" Dense="true">
+                            Status: @GetBmiStatus(CalculateBmi())
+                        </MudAlert>
+                    }
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
+                    <MudText Typo="Typo.h6" GutterBottom="true">🍲 Recipe Library</MudText>
+                    <div class="text-center py-4">
+                        <MudText Typo="Typo.h3" Color="Color.Primary">@recipeCount</MudText>
+                        <MudText Typo="Typo.body1">Available Recipes</MudText>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-4" href="/recipes">
+                            Browse Recipes
+                        </MudButton>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
+                    <MudText Typo="Typo.h6" GutterBottom="true">🎯 Current Goal</MudText>
+                    <MudText Typo="Typo.body1">You are currently focusing on: <b>@(userProfile?.Objective ?? "Not Set")</b>
+                    </MudText>
+                    <MudProgressLinear Color="Color.Info" Value="100" Class="my-4" Size="Size.Large">
+                        <ChildContent>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Inherit"><b>Keep going!</b></MudText>
+                        </ChildContent>
+                    </MudProgressLinear>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudContainer>
+
+@code {
+    private UserProfile? userProfile;
+    private int recipeCount = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+
+        if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
+        {
+            try
+            {
+                userProfile = await Http.GetFromJsonAsync<UserProfile>($"api/UserProfile/{userId}");
+            }
+            catch { /* Profile might not exist yet */ }
+        }
+
+        try
+        {
+            var recipes = await Http.GetFromJsonAsync<List<RecipeModel>>("api/Recipes");
+            recipeCount = recipes?.Count ?? 0;
+        }
+        catch { /* API might be offline */ }
+    }
+
+    private double CalculateBmi()
+    {
+        if (userProfile == null || userProfile.Height <= 0) return 0;
+        double heightInMeters = userProfile.Height / 100.0;
+        return userProfile.Weight / (heightInMeters * heightInMeters);
+    }
+
+    private string GetBmiStatus(double bmi)
+    {
+        // Am folosit IF-uri clasice pentru a evita confuzia parserului Razor cu simbolul '<'
+        if (bmi <= 0) return "N/A";
+        if (bmi < 18.5) return "Underweight";
+        if (bmi < 25) return "Healthy Weight";
+        if (bmi < 30) return "Overweight";
+        return "Obese";
+    }
+
+    private Color GetBmiColor(double bmi) => (bmi >= 18.5 && bmi < 25) ? Color.Success : Color.Error;
+
+    private Severity GetBmiSeverity(double bmi) => (bmi >= 18.5 && bmi < 25) ? Severity.Success : Severity.Warning;
+}

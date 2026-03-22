@@ -1,71 +1,75 @@
 @page "/recipes"
 @using Frontend.Models
 @inject HttpClient Http
+@inject NavigationManager Navigation
 
-<PageTitle>Recipe Catalog</PageTitle>
-
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>🥗 Available Recipes</h1>
-        <button class="btn btn-success">+ New Recipe</button>
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
+    <div class="d-flex justify-space-between align-center mb-6">
+        <MudText Typo="Typo.h4">🥗 Recipe Catalog</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" href="/add-recipe">
+            New Recipe
+        </MudButton>
     </div>
 
     @if (recipes == null)
     {
-        <div class="text-center">
-            <div class="spinner-border text-primary" role="status"></div>
-            <p>Loading recipes...</p>
-        </div>
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-7" />
     }
     else if (!recipes.Any())
     {
-        <div class="alert alert-info">There are no recipes yet. Add one from Swagger.</div>
+        <MudAlert Severity="Severity.Info">No recipes found. Be the first to add one!</MudAlert>
     }
     else
     {
-        <div class="row">
+        <MudGrid>
             @foreach (var recipe in recipes)
             {
-                <div class="col-md-4 mb-4">
-                    <div class="card h-100 shadow-sm">
-                            <img src="@(string.IsNullOrEmpty(recipe.ImageURL) ? "https://via.placeholder.com/300x200?text=Recipe" : recipe.ImageURL)" 
-                                class="card-img-top" alt="Recipe image">
-                        <div class="card-body">
-                            <h5 class="card-title">@recipe.Title</h5>
-                            <p class="text-muted small">⏱ @recipe.CookingTimeInMinutes min | 📊 @recipe.Level</p>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="3" Class="rounded-lg h-100">
+                        <MudCardMedia Image="@(string.IsNullOrEmpty(recipe.ImageURL) ? "https://via.placeholder.com/300x200?text=No+Image" : recipe.ImageURL)" Height="200" />
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6">@recipe.Title</MudText>
+                            <MudText Typo="Typo.body2" Class="text-muted mb-2">⏱ @recipe.CookingTimeInMinutes min | @recipe.Level</MudText>
                             
-                            <div class="nutrition-summary p-2 bg-light rounded">
-                                <div class="row text-center">
-                                    <div class="col"><strong>@recipe.TotalCalories.ToString("F0")</strong><br/><small>kcal</small></div>
-                                    <div class="col text-primary"><strong>@recipe.TotalProtein.ToString("F1")g</strong><br/><small>P</small></div>
-                                    <div class="col text-success"><strong>@recipe.TotalCarbs.ToString("F1")g</strong><br/><small>C</small></div>
-                                    <div class="col text-danger"><strong>@recipe.TotalFats.ToString("F1")g</strong><br/><small>F</small></div>
+                            <MudDivider Class="my-2" />
+                            
+                            <div class="d-flex justify-space-around py-2 bg-light rounded">
+                                <div class="text-center">
+                                    <MudText Typo="Typo.subtitle2"><b>@recipe.TotalCalories.ToString("F0")</b></MudText>
+                                    <MudText Typo="Typo.caption">kcal</MudText>
+                                </div>
+                                <div class="text-center">
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary"><b>@recipe.TotalProtein.ToString("F1")g</b></MudText>
+                                    <MudText Typo="Typo.caption">P</MudText>
+                                </div>
+                                <div class="text-center">
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Success"><b>@recipe.TotalCarbs.ToString("F1")g</b></MudText>
+                                    <MudText Typo="Typo.caption">C</MudText>
                                 </div>
                             </div>
-                        </div>
-                        <div class="card-footer bg-white border-top-0">
-                            <button class="btn btn-outline-primary w-100">View details</button>
-                        </div>
-                    </div>
-                </div>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" FullWidth="true" href="@($"/recipe/{recipe.Id}")">View Details</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
             }
-        </div>
+        </MudGrid>
     }
-</div>
+</MudContainer>
 
 @code {
     private List<RecipeModel>? recipes;
 
     protected override async Task OnInitializedAsync()
     {
-        try
+        try 
         {
-            // Call the GET endpoint exposed by RecipesController.
             recipes = await Http.GetFromJsonAsync<List<RecipeModel>>("api/Recipes");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Loading error: {ex.Message}");
+            Console.WriteLine($"Error loading recipes: {ex.Message}");
         }
     }
 }

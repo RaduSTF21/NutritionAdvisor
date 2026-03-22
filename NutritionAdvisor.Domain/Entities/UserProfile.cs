@@ -1,6 +1,6 @@
 namespace NutritionAdvisor.Domain.Entities;
 using System.ComponentModel.DataAnnotations;
-public record UserProfile
+public class UserProfile
 { 
     [Key]
     required public Guid UserId { get; set; }

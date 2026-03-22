@@ -43,11 +43,13 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(user)));
     }
 
-    public void MarkUserAsLoggedOut()
+    public async Task MarkUserAsLoggedOut()
     {
-        _localStorage.RemoveItemAsync("authToken");
-        var anonymous = new ClaimsPrincipal(new ClaimsIdentity());
-        NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(anonymous)));
+        // Remove the saved token (ensure the key name matches the one used at login).
+        await _localStorage.RemoveItemAsync("authToken");
+
+        var anonymousUser = new ClaimsPrincipal(new ClaimsIdentity());
+        NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(anonymousUser)));
     }
 
     // Parse the claims stored inside the JWT payload.
@@ -69,4 +71,6 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         }
         return Convert.FromBase64String(base64);
     }
+
+    
 }

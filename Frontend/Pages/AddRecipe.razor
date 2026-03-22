@@ -1,158 +1,110 @@
 @page "/add-recipe"
 @using Frontend.Models
-@using System.Net.Http.Json
 @inject HttpClient Http
 @inject NavigationManager Navigation
+@inject ISnackbar Snackbar
 
-<PageTitle>Add New Recipe</PageTitle>
-
-<div class="container mt-4">
-    <h1>👨‍🍳 Create a New Recipe</h1>
-    <hr />
-
-    <div class="row">
-        <div class="col-md-7">
-            <div class="card p-4 shadow-sm">
-                <div class="mb-3">
-                    <label class="form-label">Recipe Title</label>
-                    <input @bind="newRecipe.Title" class="form-control" placeholder="Example: Parmesan Chicken" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Description</label>
-                    <textarea @bind="newRecipe.Description" class="form-control" rows="2"></textarea>
-                </div>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Cooking Time (min)</label>
-                        <input type="number" @bind="newRecipe.CookingTimeInMinutes" class="form-control" />
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Difficulty</label>
-                        <select @bind="newRecipe.Level" class="form-select">
-                            <option value="Easy">Easy</option>
-                            <option value="Medium">Medium</option>
-                            <option value="Hard">Hard</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Instructions</label>
-                    <textarea @bind="newRecipe.Instructions" class="form-control" rows="4"></textarea>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-5">
-            <div class="card p-4 shadow-sm bg-light">
-                <h5>🍎 Add Ingredients</h5>
-                <div class="input-group mb-3">
-                    <input @bind="searchTerm" @bind:event="oninput" @onkeyup="SearchIngredients" 
-                           class="form-control" placeholder="Search ingredient (e.g. chicken)..." />
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
+    <MudText Typo="Typo.h4" GutterBottom="true">👨‍🍳 Create Recipe</MudText>
+    
+    <MudGrid>
+        <MudItem xs="12" md="7">
+            <MudPaper Class="p-4" Elevation="2">
+                <MudTextField Label="Title" @bind-Value="newRecipe.Title" Required="true" Placeholder="e.g. Grilled Chicken Salad" />
+                <MudTextField Label="Description" @bind-Value="newRecipe.Description" Lines="2" />
+                
+                <div class="d-flex gap-4 mt-4">
+                    <MudNumericField Label="Cooking Time (min)" @bind-Value="newRecipe.CookingTimeInMinutes" Min="1" />
+                    <MudSelect Label="Difficulty" @bind-Value="newRecipe.Level">
+                        <MudSelectItem Value="@("Easy")">Easy</MudSelectItem>
+                        <MudSelectItem Value="@("Medium")">Medium</MudSelectItem>
+                        <MudSelectItem Value="@("Hard")">Hard</MudSelectItem>
+                    </MudSelect>
                 </div>
 
-                @if (foundIngredients.Any())
-                {
-                    <ul class="list-group mb-3">
-                        @foreach (var ing in foundIngredients)
-                        {
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                @ing.Name
-                                <button class="btn btn-sm btn-primary" @onclick="() => AddToRecipe(ing)">+</button>
-                            </li>
-                        }
-                    </ul>
-                }
+                <MudTextField Label="Instructions" @bind-Value="newRecipe.Instructions" Lines="5" Class="mt-4" Placeholder="Step by step instructions..." />
+                <MudButton Variant="Variant.Filled" Color="Color.Success" Class="mt-6" FullWidth="true" 
+                           OnClick="SaveRecipe" Disabled="@(!selectedIngredients.Any())">Save Recipe</MudButton>
+            </MudPaper>
+        </MudItem>
 
-                <h6>Selected Ingredients:</h6>
-                <ul class="list-group mb-3">
-                    @foreach (var item in selectedIngredients)
+        <MudItem xs="12" md="5">
+            <MudPaper Class="p-4" Elevation="2" Style="background-color: #f9f9f9;">
+                <MudText Typo="Typo.h6">🍎 Add Ingredients</MudText>
+                <MudTextField T="string" Label="Search ingredient..." ValueChanged="OnSearch" 
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search" />
+                
+                <MudList T="string">
+                    @foreach (var ing in foundIngredients)
                     {
-                        <li class="list-group-item">
-                            <div class="d-flex justify-content-between">
-                                <strong>@item.Name</strong>
-                                <button class="btn btn-sm text-danger" @onclick="() => selectedIngredients.Remove(item)">x</button>
+                        <MudListItem OnClick="() => AddIngredient(ing)">
+                            <div class="d-flex justify-space-between">
+                                <span>@ing.Name</span>
+                                <MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" />
                             </div>
-                            <div class="input-group input-group-sm mt-1">
-                                <input type="number" @bind="item.Amount" class="form-control" placeholder="Amount" />
-                                <span class="input-group-text">g</span>
-                            </div>
-                        </li>
+                        </MudListItem>
                     }
-                </ul>
-            </div>
-        </div>
-    </div>
+                </MudList>
 
-    <div class="mt-4 mb-5">
-        <button class="btn btn-lg btn-success w-100" @onclick="SaveRecipe" disabled="@(!selectedIngredients.Any())">
-            💾 Save Recipe
-        </button>
-    </div>
-</div>
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.subtitle1">Selected Ingredients:</MudText>
+                @if (!selectedIngredients.Any())
+                {
+                    <MudText Typo="Typo.body2" Class="text-muted italic">No ingredients added yet.</MudText>
+                }
+                @foreach (var item in selectedIngredients)
+                {
+                    <div class="d-flex align-center gap-2 mb-2">
+                        <MudText Style="flex-grow: 1">@item.Name</MudText>
+                        <MudNumericField @bind-Value="item.Amount" Label="Grams" Style="width: 80px;" Min="1" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => selectedIngredients.Remove(item)" />
+                    </div>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
 
 @code {
     private RecipeCreateModel newRecipe = new();
-    private string searchTerm = "";
     private List<IngredientSearchResult> foundIngredients = new();
     private List<SelectedIngredient> selectedIngredients = new();
 
-    private async Task SearchIngredients()
+    private async Task OnSearch(string text)
     {
-        if (searchTerm.Length > 1)
-        {
-            foundIngredients = await Http.GetFromJsonAsync<List<IngredientSearchResult>>($"api/Ingredients/search?searchTerm={searchTerm}") ?? new();
-        }
-        else { foundIngredients.Clear(); }
+        if (text?.Length > 1)
+            foundIngredients = await Http.GetFromJsonAsync<List<IngredientSearchResult>>($"api/Ingredients/search?searchTerm={text}") ?? new();
+        else
+            foundIngredients.Clear();
     }
 
-    private void AddToRecipe(IngredientSearchResult ing)
+    private void AddIngredient(IngredientSearchResult ing)
     {
         if (!selectedIngredients.Any(i => i.Id == ing.Id))
-        {
             selectedIngredients.Add(new SelectedIngredient { Id = ing.Id, Name = ing.Name, Amount = 100 });
-        }
-        searchTerm = "";
         foundIngredients.Clear();
     }
 
     private async Task SaveRecipe()
     {
-        newRecipe.Ingredients = selectedIngredients.Select(i => new RecipeIngredientDto 
-        { 
-            IngredientId = i.Id, 
-            Amount = i.Amount 
-        }).ToList();
-
+        newRecipe.Ingredients = selectedIngredients.Select(i => new RecipeIngredientDto { IngredientId = i.Id, Amount = i.Amount }).ToList();
         var response = await Http.PostAsJsonAsync("api/Recipes", newRecipe);
-        if (response.IsSuccessStatusCode)
-        {
+        
+        if (response.IsSuccessStatusCode) {
+            Snackbar.Add("Recipe saved successfully!", Severity.Success);
             Navigation.NavigateTo("/recipes");
         }
     }
 
-    // Supporting classes for the form
     public class RecipeCreateModel {
         public string Title { get; set; } = "";
         public string Description { get; set; } = "";
-        public int CookingTimeInMinutes { get; set; } = 15;
+        public int CookingTimeInMinutes { get; set; } = 20;
         public string Level { get; set; } = "Easy";
         public string Instructions { get; set; } = "";
         public List<RecipeIngredientDto> Ingredients { get; set; } = new();
     }
-
-    public class SelectedIngredient {
-        public Guid Id { get; set; }
-        public string Name { get; set; } = "";
-        public float Amount { get; set; }
-    }
-
-    public class IngredientSearchResult {
-        public Guid Id { get; set; }
-        public string Name { get; set; } = "";
-    }
-
-    public class RecipeIngredientDto {
-        public Guid IngredientId { get; set; }
-        public float Amount { get; set; }
-    }
+    public class SelectedIngredient { public Guid Id { get; set; } public string Name { get; set; } = ""; public float Amount { get; set; } }
+    public class IngredientSearchResult { public Guid Id { get; set; } public string Name { get; set; } = ""; }
+    public class RecipeIngredientDto { public Guid IngredientId { get; set; } public float Amount { get; set; } }
 }
