@@ -8,10 +8,14 @@ public class RecipeModel
     public int CookingTimeInMinutes { get; set; }
     public string Level { get; set; } = string.Empty;
     public string ImageURL { get; set; } = string.Empty;
-    
+    public string Instructions { get; set; } = string.Empty;
     // Calculated properties populated by the backend.
     public float TotalCalories { get; set; }
     public float TotalProtein { get; set; }
     public float TotalCarbs { get; set; }
     public float TotalFats { get; set; }
+    public float TotalFiber { get; set; }
+    public float TotalSugar { get; set; }
+    public float TotalSodium { get; set; }
+    public List<RecipeIngredientModel> Ingredients { get; set; } = new();
 }
