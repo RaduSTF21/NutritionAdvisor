@@ -17,7 +17,7 @@ builder.Services.AddControllers()
     {
         // Serialize enum values as strings such as Easy and Medium.
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-        
+
         // Prevent JSON serialization errors caused by circular references.
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
@@ -52,9 +52,10 @@ builder.Services.AddScoped<NutritionAdvisor.Application.Interfaces.IUserProfileR
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRecipeRepository, RecipeRepository>();
 builder.Services.AddScoped<IIngredientRepository, IngredientRepository>();
+builder.Services.AddScoped<IDailyLogRepository, DailyLogRepository>();
 
 // Configure CORS.
-var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
                      ?? new[] { "http://localhost:5210" };
 
 builder.Services.AddCors(options =>
@@ -72,7 +73,7 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    
+
     // Enable the Swagger UI middleware in development.
     app.UseSwagger();
     app.UseSwaggerUI(options =>
