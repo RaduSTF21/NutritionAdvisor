@@ -4,11 +4,9 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 
-
-
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
     <div class="d-flex justify-space-between align-center mb-6">
-        <MudText Typo="Typo.h4">🥗 Recipe Catalog</MudText>
+        <MudText Typo="Typo.h4">Recipe Catalog</MudText>
         <AuthorizeView>
             <Authorized>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
@@ -23,7 +21,6 @@
                 </MudButton>
             </NotAuthorized>
         </AuthorizeView>
-        
     </div>
 
     @if (recipes == null)
@@ -41,9 +38,7 @@
             {
                 <MudItem xs="12" sm="6" md="4">
                     <MudCard Elevation="3" Class="rounded-lg h-100">
-                        <MudCardMedia
-                        Image="@(string.IsNullOrEmpty(recipe.ImageURL) ? "https://via.placeholder.com/300x200?text=No+Image" : recipe.ImageURL)"
-                        Height="200" />
+                        <MudCardMedia Image="@BuildImageUrl(recipe.ImageURL)" Height="200" />
                         <MudCardContent>
                             <MudText Typo="Typo.h6">@recipe.Title</MudText>
                             <MudText Typo="Typo.body2" Class="text-muted mb-2">⏱ @recipe.CookingTimeInMinutes min |
@@ -58,29 +53,32 @@
                                     </div>
                                     <div class="text-center">
                                         <MudText Typo="Typo.subtitle2" Color="Color.Primary">
-                                            <b>@recipe.TotalProtein.ToString("F1")g</b></MudText>
-                                            <MudText Typo="Typo.caption">P</MudText>
-                                        </div>
-                                        <div class="text-center">
-                                            <MudText Typo="Typo.subtitle2" Color="Color.Success">
-                                                <b>@recipe.TotalCarbs.ToString("F1")g</b></MudText>
-                                                <MudText Typo="Typo.caption">C</MudText>
-                                            </div>
-                                        </div>
-                                    </MudCardContent>
-                                    <MudCardActions>
-                                        <MudButton Variant="Variant.Text" Color="Color.Primary" FullWidth="true"
-                                                   href="@($"/recipe/{recipe.Id}")">View Details</MudButton>
-                                    </MudCardActions>
-                                </MudCard>
-                            </MudItem>
-                        }
-                    </MudGrid>
+                                            <b>@recipe.TotalProtein.ToString("F1")g</b>
+                                        </MudText>
+                                        <MudText Typo="Typo.caption">P</MudText>
+                                    </div>
+                                    <div class="text-center">
+                                        <MudText Typo="Typo.subtitle2" Color="Color.Success">
+                                            <b>@recipe.TotalCarbs.ToString("F1")g</b>
+                                        </MudText>
+                                        <MudText Typo="Typo.caption">C</MudText>
+                                    </div>
+                                </div>
+                            </MudCardContent>
+                            <MudCardActions>
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" FullWidth="true"
+                                           href="@($"/recipe/{recipe.Id}")">View Details</MudButton>
+                            </MudCardActions>
+                        </MudCard>
+                    </MudItem>
                 }
-            </MudContainer>
+            </MudGrid>
+        }
+    </MudContainer>
 
 @code {
     private List<RecipeModel>? recipes;
+    private string ApiBaseUrl = "http://localhost:5066";
 
     protected override async Task OnInitializedAsync()
     {
@@ -92,5 +90,16 @@
         {
             Console.WriteLine($"Error loading recipes: {ex.Message}");
         }
+    }
+
+    private string BuildImageUrl(string? url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return "https://via.placeholder.com/300x200?text=No+Image";
+
+        if (url.StartsWith("http"))
+            return url;
+
+        return $"{ApiBaseUrl}{url}";
     }
 }

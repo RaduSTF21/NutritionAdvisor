@@ -18,18 +18,13 @@ public class Recipe
 
     public Difficulty Level { get; set; }
 
-    // Relationship to the join table.
     public List<RecipeIngredient> Ingredients { get; set; } = new();
 
-    // Preparation instructions.
     public string Instructions { get; set; } = string.Empty;
 
-    // AI-facing tags (for example: "Keto", "Vegan", "Dinner").
     public List<string> Tags { get; set; } = new();
 
-    // Robust calculated properties used by the AI features.
-    // Ensure Ingredients and the nested Ingredient entities are loaded eagerly.
-    // Ingredient nutrition values are per 100g, so scale by amount / 100.
+
 
     public float TotalCalories => Ingredients?
         .Sum(i => i.Ingredient != null ? (i.Ingredient.Calories * i.Amount) / 100 : 0) ?? 0;

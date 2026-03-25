@@ -1,0 +1,95 @@
+@page "/add-ingredient"
+@using MudBlazor
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Class="pa-6" Elevation="3">
+        <MudText Typo="Typo.h4" GutterBottom="true" Align="Align.Center">🥗 New Ingredient</MudText>
+        <MudText Typo="Typo.body2" Class="mb-6" Align="Align.Center">Add a new item to the database (values per 100g/ml)
+        </MudText>
+
+        <MudTextField Label="Ingredient Name" @bind-Value="model.Name" Required="true" Variant="Variant.Outlined"
+                      Margin="Margin.Dense" />
+        
+        <MudGrid Class="mt-2">
+            <MudItem xs="6">
+                <MudNumericField Label="Calories" @bind-Value="model.Calories" Min="0" Variant="Variant.Outlined"
+                                 Margin="Margin.Dense" />
+                <MudNumericField Label="Protein (g)" @bind-Value="model.Protein" Min="0" Variant="Variant.Outlined"
+                                 Margin="Margin.Dense" />
+                <MudNumericField Label="Carbs (g)" @bind-Value="model.Carbohydrates" Min="0" Variant="Variant.Outlined"
+                                 Margin="Margin.Dense" />
+                <MudNumericField Label="Sugar (g)" @bind-Value="model.Sugar" Min="0" Variant="Variant.Outlined"
+                                 Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField Label="Fats (g)" @bind-Value="model.Fats" Min="0" Variant="Variant.Outlined"
+                                 Margin="Margin.Dense" />
+                <MudNumericField Label="Fiber (g)" @bind-Value="model.Fiber" Min="0" Variant="Variant.Outlined"
+                                 Margin="Margin.Dense" />
+                <MudNumericField Label="Sodium (mg)" @bind-Value="model.Sodium" Min="0" Variant="Variant.Outlined"
+                                 Margin="Margin.Dense" />
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle2">Dietary Information</MudText>
+        <div class="d-flex flex-wrap gap-2">
+            <MudCheckBox @bind-Value="model.IsVegan" Label="Vegan" Color="Color.Success" Dense="true" />
+            <MudCheckBox @bind-Value="model.IsGlutenFree" Label="Gluten Free" Color="Color.Info" Dense="true" />
+            <MudCheckBox @bind-Value="model.IsDairyFree" Label="Dairy Free" Color="Color.Primary" Dense="true" />
+            <MudCheckBox @bind-Value="model.IsNutFree" Label="Nut Free" Color="Color.Warning" Dense="true" />
+        </div>
+
+        <div class="d-flex justify-space-between mt-8">
+            <MudButton Variant="Variant.Text" OnClick="@(() => Navigation.NavigateTo("/add-recipe"))">Back to Recipe
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveIngredient" Size="Size.Large">Save
+                Ingredient</MudButton>
+            </div>
+        </MudPaper>
+    </MudContainer>
+
+@code {
+    private IngredientFormModel model = new();
+
+    private async Task SaveIngredient()
+    {
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            Snackbar.Add("Please enter an ingredient name.", Severity.Warning);
+            return;
+        }
+
+        var response = await Http.PostAsJsonAsync("api/Ingredients", model);
+        
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add($"{model.Name} added successfully!", Severity.Success);
+            // Opțional, ne întoarcem la pagina de rețetă
+            Navigation.NavigateTo("/add-recipe");
+        }
+        else
+        {
+            Snackbar.Add("Failed to save ingredient. Try again.", Severity.Error);
+        }
+    }
+
+    public class IngredientFormModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public float Calories { get; set; }
+        public float Protein { get; set; }
+        public float Carbohydrates { get; set; }
+        public float Fats { get; set; }
+        public float Fiber { get; set; }
+        public float Sugar { get; set; }
+        public float Sodium { get; set; }
+        public bool IsGlutenFree { get; set; }
+        public bool IsDairyFree { get; set; }
+        public bool IsVegan { get; set; }
+        public bool IsNutFree { get; set; }
+    }
+}
