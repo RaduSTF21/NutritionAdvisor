@@ -78,7 +78,7 @@
 
 @code {
     private List<RecipeModel>? recipes;
-    private string ApiBaseUrl = "http://localhost:5066";
+    private const string NoImagePlaceholder = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='200'><rect width='100%25' height='100%25' fill='%23f3f4f6'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%236b7280' font-family='Arial' font-size='16'>No Image</text></svg>";
 
     protected override async Task OnInitializedAsync()
     {
@@ -95,11 +95,12 @@
     private string BuildImageUrl(string? url)
     {
         if (string.IsNullOrEmpty(url))
-            return "https://via.placeholder.com/300x200?text=No+Image";
+            return NoImagePlaceholder;
 
         if (url.StartsWith("http"))
             return url;
 
-        return $"{ApiBaseUrl}{url}";
+        var baseUrl = Http.BaseAddress?.ToString().TrimEnd('/') ?? string.Empty;
+        return url.StartsWith("/") ? $"{baseUrl}{url}" : $"{baseUrl}/{url}";
     }
 }

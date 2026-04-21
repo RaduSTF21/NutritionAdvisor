@@ -18,7 +18,7 @@ public class LogMealCommandHandler : IRequestHandler<LogMealCommand, Guid>
     public async Task<Guid> Handle(LogMealCommand request, CancellationToken cancellationToken)
     {
         var recipe = await _recipeRepository.GetByIdAsync(request.RecipeId, cancellationToken) ?? throw new Exception("Recipe not found.");
-        var today = DateTime.Today;
+        var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
 
 
         var log = await _dailyLogRepository.GetByDateAsync(request.UserId, today, cancellationToken);
@@ -28,13 +28,17 @@ public class LogMealCommandHandler : IRequestHandler<LogMealCommand, Guid>
             {
                 UserId = request.UserId,
                 Date = today,
-                ConsumedRecipes = new List<Recipe> { recipe }
+                Meals = new List<Meal> { new Meal { Recipe = recipe, EatenAt = DateTime.UtcNow } }
             };
             await _dailyLogRepository.AddAsync(log, cancellationToken);
         }
         else
         {
-            log.ConsumedRecipes.Add(recipe);
+            log.Meals.Add(new Meal
+            {
+                Recipe = recipe,
+                EatenAt = DateTime.UtcNow
+            });
             await _dailyLogRepository.UpdateAsync(log, cancellationToken);
         }
         return log.Id;

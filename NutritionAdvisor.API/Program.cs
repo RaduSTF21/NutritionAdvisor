@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using NutritionAdvisor.Application.Interfaces;
+using NutritionAdvisor.Infrastructure.Databases;
 using NutritionAdvisor.Infrastructure.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -42,14 +43,17 @@ builder.Services.AddDbContext<NutritionAdvisor.Infrastructure.Databases.Applicat
 
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(NutritionAdvisor.Application.UserProfiles.Commands.SaveUserProfile.SaveUserProfileCommand).Assembly));
 
-builder.Services.AddScoped<NutritionAdvisor.Application.Interfaces.IUserProfileRepository, NutritionAdvisor.Infrastructure.Repositories.UserProfileRepository>();
+builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRecipeRepository, RecipeRepository>();
 builder.Services.AddScoped<IIngredientRepository, IngredientRepository>();
 builder.Services.AddScoped<IDailyLogRepository, DailyLogRepository>();
+builder.Services.AddScoped<IFoodPreferenceRepository, FoodPreferenceRepository>();
+builder.Services.AddScoped<IAllergyRepository, AllergyRepository>();
+builder.Services.AddScoped<IFileStorageService, NutritionAdvisor.Infrastructure.Services.LocalFileStorageService>();
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-                     ?? new[] { "http://localhost:5210" };
+                     ?? ["http://localhost:5210"];
 
 builder.Services.AddCors(options =>
 {
@@ -61,6 +65,13 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    dbContext.Database.Migrate();
+}
 
 if (app.Environment.IsDevelopment())
 {

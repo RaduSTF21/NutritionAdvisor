@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nutrition_user
+      POSTGRES_PASSWORD: nutrition_pass
+      POSTGRES_DB: nutrition_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: NutritionAdvisor.API/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: Host=postgres;Database=nutrition_db;Username=nutrition_user;Password=nutrition_pass
+      Jwt__Key: CHANGE_ME_TO_A_SECURE_KEY_WITH_AT_LEAST_32_CHARS
+      Jwt__Issuer: NutritionAdvisor
+      Jwt__Audience: NutritionAdvisorUsers
+    ports:
+      - "5066:8080"
+    depends_on:
+      - postgres
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Frontend/Dockerfile
+    ports:
+      - "5210:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

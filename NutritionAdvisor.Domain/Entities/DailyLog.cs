@@ -6,5 +6,5 @@ public class DailyLog
 
     public DateTime Date { get; set; }
     public Guid UserId { get; set; }
-    public List<Recipe> ConsumedRecipes { get; set; } = new List<Recipe>();
+    public List<Meal> Meals { get; set; } = new List<Meal>();
 }

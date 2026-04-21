@@ -26,7 +26,7 @@
         <MudGrid>
             <MudItem xs="12" md="6">
                 <MudImage
-                Src="@(string.IsNullOrEmpty(recipe.ImageURL) ? "https://via.placeholder.com/600x400?text=No+Image" : recipe.ImageURL)"
+                Src = "@BuildImageUrl(recipe.ImageURL)"
                 Alt="@recipe.Title" Elevation="3" Class="rounded-lg" ObjectFit="ObjectFit.Cover" Fluid="true" />
             </MudItem>
             <MudItem xs="12" md="6" Class="d-flex flex-column justify-center">
@@ -89,8 +89,8 @@
                             @foreach (var ingredient in recipe.Ingredients)
                             {
                                 <tr>
-                                    <td>@ingredient.Name</td>
-                                    <td>@ingredient.Quantity @ingredient.Unit</td>
+                                    <td>@ingredient.Ingredient.Name</td>
+                                    <td>@ingredient.Amount @ingredient.Unit</td>
                                 </tr>
                             }
                         }
@@ -139,6 +139,19 @@
     private RecipeModel? recipe;
     private bool isLoading = true;
     private bool isProcessing = false;
+    private const string NoImagePlaceholder = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='400'><rect width='100%25' height='100%25' fill='%23f3f4f6'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%236b7280' font-family='Arial' font-size='22'>No Image</text></svg>";
+
+    private string BuildImageUrl(string? url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return NoImagePlaceholder;
+
+        if (url.StartsWith("http"))
+            return url;
+
+        var baseUrl = Http.BaseAddress?.ToString().TrimEnd('/') ?? string.Empty;
+        return url.StartsWith("/") ? $"{baseUrl}{url}" : $"{baseUrl}/{url}";
+    }
 
     protected override async Task OnInitializedAsync()
     {

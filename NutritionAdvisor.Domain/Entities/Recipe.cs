@@ -23,6 +23,7 @@ public class Recipe
     public string Instructions { get; set; } = string.Empty;
 
     public List<string> Tags { get; set; } = new();
+    public List<Meal> Meals { get; set; } = new List<Meal>();
 
 
 

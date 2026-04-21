@@ -1,6 +1,8 @@
+
+using Frontend.Models;
 public class RecipeIngredientModel
 {
-    public string Name { get; set; } = string.Empty;
-    public float Quantity { get; set; }
+    public IngredientModel Ingredient { get; set; } = new IngredientModel();
+    public float Amount { get; set; }
     public string Unit { get; set; } = "g";
 }
