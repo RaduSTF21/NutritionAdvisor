@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using NutritionAdvisor.Application.Recipes.Commands.CreateRecipe;
 using NutritionAdvisor.Application.Recipes.Queries.GetAllRecipes;
+using NutritionAdvisor.Application.Recipes.Queries.GetRecipesById;
 
 namespace NutritionAdvisor.API.Controllers;
 
@@ -29,5 +30,16 @@ public class RecipesController : ControllerBase
     {
         var id = await _mediator.Send(command);
         return Ok(id);
+    }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetById(Guid id)
+    {
+        var recipe = await _mediator.Send(new GetRecipeByIdQuery(id));
+        if (recipe == null)
+        {
+            return NotFound();
+        }
+        return Ok(recipe);
     }
 }

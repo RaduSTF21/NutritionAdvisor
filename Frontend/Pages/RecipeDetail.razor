@@ -1,0 +1,210 @@
+@page "/recipe/{RecipeId:guid}"
+@using System.Security.Claims
+@using Frontend.Models
+@inject HttpClient Http
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
+    @if (isLoading)
+    {
+        <div class="d-flex justify-center mt-10">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+        </div>
+    }
+    else if (recipe == null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mt-4">
+            Recipe not found or failed to load.
+            <MudButton Color="Color.Inherit" OnClick="OnInitializedAsync" Class="ml-auto">Retry</MudButton>
+        </MudAlert>
+    }
+    else
+    {
+        @* Header: Imagine și Detalii Rapide *@
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudImage
+                Src="@(string.IsNullOrEmpty(recipe.ImageURL) ? "https://via.placeholder.com/600x400?text=No+Image" : recipe.ImageURL)"
+                Alt="@recipe.Title" Elevation="3" Class="rounded-lg" ObjectFit="ObjectFit.Cover" Fluid="true" />
+            </MudItem>
+            <MudItem xs="12" md="6" Class="d-flex flex-column justify-center">
+                <MudText Typo="Typo.h3" Color="Color.Primary" Class="mb-2">@recipe.Title</MudText>
+                <div class="d-flex gap-4 mb-4">
+                    <MudChip T="string" Icon="@Icons.Material.Filled.AccessTime" Color="Color.Info">
+                        @recipe.CookingTimeInMinutes min</MudChip>
+                        <MudChip T="string" Icon="@Icons.Material.Filled.Speed" Color="Color.Warning">@recipe.Level</MudChip>
+                    </div>
+                    <MudText Typo="Typo.body1" Class="mt-4">@recipe.Description</MudText>
+                </MudItem>
+            </MudGrid>
+
+            @* Tabel Nutrițional *@
+        
+            <MudCard Elevation="2" Class="pa-4 mt-6">
+                <MudText Typo="Typo.h6" GutterBottom="true">Nutritional Details (per serving) 📊</MudText>
+                <MudSimpleTable Style="overflow-x: auto;">
+                    <thead>
+                        <tr>
+                            <th>Element</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Calories</td>
+                            <td><strong>@recipe.TotalCalories.ToString("F0") kcal</strong></td>
+                        </tr>
+                        <tr>
+                            <td>Protein</td>
+                            <td>@recipe.TotalProtein.ToString("F1") g</td>
+                        </tr>
+                        <tr>
+                            <td>Carbohydrates</td>
+                            <td>@recipe.TotalCarbs.ToString("F1") g</td>
+                        </tr>
+                        <tr>
+                            <td>Fats</td>
+                            <td>@recipe.TotalFats.ToString("F1") g</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudCard>
+
+            @* Tabel Ingrediente *@
+        
+            <MudCard Elevation="2" Class="pa-4 mt-6">
+                <MudText Typo="Typo.h6" GutterBottom="true">Ingredients 🛒</MudText>
+                <MudSimpleTable Style="overflow-x: auto;" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Ingredient</th>
+                            <th>Quantity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (recipe.Ingredients != null && recipe.Ingredients.Any())
+                        {
+                            @foreach (var ingredient in recipe.Ingredients)
+                            {
+                                <tr>
+                                    <td>@ingredient.Name</td>
+                                    <td>@ingredient.Quantity @ingredient.Unit</td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="2" class="text-center">No ingredients listed.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudCard>
+
+            @* Instrucțiuni de Preparare *@
+            <MudCard Elevation="2" Class="pa-4 mt-6">
+                <MudText Typo="Typo.h6" GutterBottom="true">Preparation Steps ✍️</MudText>
+                <MudText Typo="Typo.body1" Style="white-space: pre-wrap;" Class="mt-2">@recipe.Instructions</MudText>
+            </MudCard>
+
+            @* Butoane de Acțiune *@
+            <div class="d-flex justify-space-between align-center mt-10 mb-8">
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" Color="Color.Default"
+                           OnClick="@(() => Navigation.NavigateTo("/recipes"))">
+                    Back to Catalog
+                </MudButton>
+            
+                <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Restaurant" Color="Color.Success"
+                           Size="Size.Large" Class="px-8 rounded-pill" Disabled="@isProcessing" OnClick="HandleEatRecipe">
+                    @if (isProcessing)
+                    {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                        <MudText Class="ms-2">Processing...</MudText>
+                    }
+                    else
+                    {
+                        <MudText>Eat Recipe</MudText>
+                    }
+                </MudButton>
+            </div>
+        }
+    </MudContainer>
+
+@code {
+    [Parameter] public Guid RecipeId { get; set; }
+    
+    private RecipeModel? recipe;
+    private bool isLoading = true;
+    private bool isProcessing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            isLoading = true;
+            // Preluăm detaliile rețetei folosind ID-ul din URL
+            recipe = await Http.GetFromJsonAsync<RecipeModel>($"api/Recipes/{RecipeId}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to load recipe details.", Severity.Error);
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleEatRecipe()
+    {
+        isProcessing = true;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity is not { IsAuthenticated: true })
+            {
+                Snackbar.Add("Please log in to track your meals.", Severity.Warning);
+                Navigation.NavigateTo("/login");
+                return;
+            }
+
+            // Extragem NameIdentifier (UserID) din Claims
+            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                              ?? user.FindFirst("sub")?.Value;
+
+            if (Guid.TryParse(userIdClaim, out var userId))
+            {
+                // Trimitem comanda către DailyLogController
+                var response = await Http.PostAsJsonAsync("api/DailyLog/log-meal", new
+                {
+                    UserId = userId,
+                    RecipeId = RecipeId
+                });
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Meal logged successfully! 🥗", Severity.Success);
+                }
+                else
+                {
+                    Snackbar.Add("Could not log the meal. Please try again.", Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("An error occurred while logging your meal.", Severity.Error);
+            Console.WriteLine(ex.Message);
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+}

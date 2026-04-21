@@ -1,8 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using NutritionAdvisor.Application.Ingredients.Commands.CreateIngredient;
-using NutritionAdvisor.Application.Ingredients.Commands.CreateIngredient;
-using NutritionAdvisor.Application.Ingredients.Queries.SearchIngredients;
 using NutritionAdvisor.Application.Ingredients.Queries.SearchIngredients;
 
 namespace NutritionAdvisor.API.Controllers;

@@ -17,13 +17,11 @@ public class SearchIngredientsQueryHandler : IRequestHandler<SearchIngredientsQu
 
     public async Task<IEnumerable<Ingredient>> Handle(SearchIngredientsQuery request, CancellationToken cancellationToken)
     {
-        // If the search box is empty, return the full ingredient list.
         if (string.IsNullOrWhiteSpace(request.SearchTerm))
         {
             return await _repository.GetAllAsync(cancellationToken);
         }
 
-        // Otherwise filter by the provided name.
         return await _repository.SearchByNameAsync(request.SearchTerm, cancellationToken);
     }
 }

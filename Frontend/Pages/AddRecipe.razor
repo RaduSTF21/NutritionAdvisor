@@ -1,44 +1,81 @@
 @page "/add-recipe"
 @using Frontend.Models
+@using System.IO
+@using System.Text.Json.Serialization
 @inject HttpClient Http
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
-    <MudText Typo="Typo.h4" GutterBottom="true">👨‍🍳 Create Recipe</MudText>
+    <MudText Typo="Typo.h4" GutterBottom="true">Create Recipe</MudText>
     
     <MudGrid>
         <MudItem xs="12" md="7">
-            <MudPaper Class="p-4" Elevation="2">
-                <MudTextField Label="Title" @bind-Value="newRecipe.Title" Required="true" Placeholder="e.g. Grilled Chicken Salad" />
-                <MudTextField Label="Description" @bind-Value="newRecipe.Description" Lines="2" />
+            <MudPaper Class="pa-6" Elevation="2">
+                <MudTextField Label="Title" @bind-Value="newRecipe.Title" Required="true"
+                              Placeholder="e.g. Grilled Chicken Salad" Variant="Variant.Outlined" />
+                <MudTextField Label="Description" @bind-Value="newRecipe.Description" Lines="2" Class="mt-4"
+                              Variant="Variant.Outlined" />
+                
+                <div class="mt-4 d-flex align-center gap-4">
+                    <MudFileUpload T="IBrowserFile" FilesChanged="UploadFile" Accept=".png, .jpg, .jpeg">
+                        <ActivatorContent>
+                            <MudButton Variant="Variant.Filled" Color="Color.Info"
+                                       StartIcon="@Icons.Material.Filled.CloudUpload">
+                                Upload Photo
+                            </MudButton>
+                        </ActivatorContent>
+                    </MudFileUpload>
+
+                    @if (newRecipe.ImageFileData != null)
+                    {
+                        <div class="d-flex flex-column">
+                            <MudText Typo="Typo.caption">Fișier selectat: @newRecipe.ImageFileName</MudText>
+                        </div>
+                    }
+                </div>
                 
                 <div class="d-flex gap-4 mt-4">
-                    <MudNumericField Label="Cooking Time (min)" @bind-Value="newRecipe.CookingTimeInMinutes" Min="1" />
-                    <MudSelect Label="Difficulty" @bind-Value="newRecipe.Level">
+                    <MudNumericField Label="Cooking Time (min)" @bind-Value="newRecipe.CookingTimeInMinutes" Min="1"
+                                     Variant="Variant.Outlined" />
+                    <MudSelect Label="Difficulty" @bind-Value="newRecipe.Level" Variant="Variant.Outlined">
                         <MudSelectItem Value="@("Easy")">Easy</MudSelectItem>
                         <MudSelectItem Value="@("Medium")">Medium</MudSelectItem>
                         <MudSelectItem Value="@("Hard")">Hard</MudSelectItem>
                     </MudSelect>
                 </div>
 
-                <MudTextField Label="Instructions" @bind-Value="newRecipe.Instructions" Lines="5" Class="mt-4" Placeholder="Step by step instructions..." />
-                <MudButton Variant="Variant.Filled" Color="Color.Success" Class="mt-6" FullWidth="true" 
-                           OnClick="SaveRecipe" Disabled="@(!selectedIngredients.Any())">Save Recipe</MudButton>
+                <MudTextField Label="Instructions" @bind-Value="newRecipe.Instructions" Lines="5" Class="mt-4"
+                              Placeholder="Step by step instructions..." Variant="Variant.Outlined" />
+                
+                <MudButton Variant="Variant.Filled" Color="Color.Success" Class="mt-6" FullWidth="true"
+                           OnClick="SaveRecipe" Disabled="@(!selectedIngredients.Any())" Size="Size.Large">
+                    Save Recipe
+                </MudButton>
             </MudPaper>
         </MudItem>
 
         <MudItem xs="12" md="5">
-            <MudPaper Class="p-4" Elevation="2" Style="background-color: #f9f9f9;">
-                <MudText Typo="Typo.h6">🍎 Add Ingredients</MudText>
-                <MudTextField T="string" Label="Search ingredient..." ValueChanged="OnSearch" 
-                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search" />
+            <MudPaper Class="pa-6" Elevation="2" Style="background-color: #f9f9f9;">
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudText Typo="Typo.h6">Add Ingredients</MudText>
+                    
+                    <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Secondary" Variant="Variant.Text"
+                               href="/add-ingredient">
+                        New Ingredient
+                    </MudButton>
+                </div>
+
+                @* Am adaugat Immediate="true" pentru cautare instantanee *@
+                <MudTextField T="string" Label="Search existing..." Immediate="true" ValueChanged="OnSearch"
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" />
                 
-                <MudList T="string">
+                <MudList T="string" Class="mt-2">
                     @foreach (var ing in foundIngredients)
                     {
                         <MudListItem OnClick="() => AddIngredient(ing)">
-                            <div class="d-flex justify-space-between">
+                            <div class="d-flex justify-space-between align-center">
                                 <span>@ing.Name</span>
                                 <MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" />
                             </div>
@@ -47,7 +84,7 @@
                 </MudList>
 
                 <MudDivider Class="my-4" />
-                <MudText Typo="Typo.subtitle1">Selected Ingredients:</MudText>
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Selected Ingredients:</MudText>
                 @if (!selectedIngredients.Any())
                 {
                     <MudText Typo="Typo.body2" Class="text-muted italic">No ingredients added yet.</MudText>
@@ -56,8 +93,10 @@
                 {
                     <div class="d-flex align-center gap-2 mb-2">
                         <MudText Style="flex-grow: 1">@item.Name</MudText>
-                        <MudNumericField @bind-Value="item.Amount" Label="Grams" Style="width: 80px;" Min="1" />
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => selectedIngredients.Remove(item)" />
+                        <MudNumericField @bind-Value="item.Amount" Label="Grams" Style="width: 80px;" Min="1"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                       OnClick="() => selectedIngredients.Remove(item)" />
                     </div>
                 }
             </MudPaper>
@@ -70,41 +109,109 @@
     private List<IngredientSearchResult> foundIngredients = new();
     private List<SelectedIngredient> selectedIngredients = new();
 
+    protected override async Task OnInitializedAsync()
+    {
+        await PerformSearch("");
+    }
+
+    private async Task UploadFile(IBrowserFile file)
+    {
+        if (file != null)
+        {
+            try
+            {
+                using var stream = file.OpenReadStream(maxAllowedSize: 1024 * 1024 * 5);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+
+                newRecipe.ImageFileData = ms.ToArray();
+                newRecipe.ImageFileName = file.Name;
+                Snackbar.Add("Image selected successfully!", Severity.Info);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error uploading file: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
     private async Task OnSearch(string text)
     {
-        if (text?.Length > 1)
-            foundIngredients = await Http.GetFromJsonAsync<List<IngredientSearchResult>>($"api/Ingredients/search?searchTerm={text}") ?? new();
-        else
-            foundIngredients.Clear();
+        await PerformSearch(text);
+    }
+
+    private async Task PerformSearch(string searchTerm)
+    {
+        try
+        {
+            foundIngredients = await
+Http.GetFromJsonAsync<List<IngredientSearchResult>>($"api/Ingredients/search?searchTerm={searchTerm}") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Search error: {ex.Message}");
+        }
     }
 
     private void AddIngredient(IngredientSearchResult ing)
     {
         if (!selectedIngredients.Any(i => i.Id == ing.Id))
             selectedIngredients.Add(new SelectedIngredient { Id = ing.Id, Name = ing.Name, Amount = 100 });
-        foundIngredients.Clear();
+        
     }
 
     private async Task SaveRecipe()
     {
-        newRecipe.Ingredients = selectedIngredients.Select(i => new RecipeIngredientDto { IngredientId = i.Id, Amount = i.Amount }).ToList();
+        newRecipe.Ingredients = selectedIngredients.Select(i => new RecipeIngredientDto
+        {
+            IngredientId = i.Id,
+            Amount = i.Amount
+        }).ToList();
+        
         var response = await Http.PostAsJsonAsync("api/Recipes", newRecipe);
         
-        if (response.IsSuccessStatusCode) {
+        if (response.IsSuccessStatusCode)
+        {
             Snackbar.Add("Recipe saved successfully!", Severity.Success);
             Navigation.NavigateTo("/recipes");
         }
+        else
+        {
+            Snackbar.Add("Error saving recipe. Please check all fields.", Severity.Error);
+        }
     }
 
-    public class RecipeCreateModel {
+    public class RecipeCreateModel
+    {
         public string Title { get; set; } = "";
         public string Description { get; set; } = "";
+        public byte[]? ImageFileData { get; set; }
+        public string? ImageFileName { get; set; }
         public int CookingTimeInMinutes { get; set; } = 20;
         public string Level { get; set; } = "Easy";
         public string Instructions { get; set; } = "";
         public List<RecipeIngredientDto> Ingredients { get; set; } = new();
     }
-    public class SelectedIngredient { public Guid Id { get; set; } public string Name { get; set; } = ""; public float Amount { get; set; } }
-    public class IngredientSearchResult { public Guid Id { get; set; } public string Name { get; set; } = ""; }
-    public class RecipeIngredientDto { public Guid IngredientId { get; set; } public float Amount { get; set; } }
+    
+    public class SelectedIngredient
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public float Amount { get; set; }
+    }
+    
+    public class IngredientSearchResult
+    {
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+    }
+    
+    public class RecipeIngredientDto
+    {
+        public Guid IngredientId { get; set; }
+        public float Amount { get; set; }
+    }
 }

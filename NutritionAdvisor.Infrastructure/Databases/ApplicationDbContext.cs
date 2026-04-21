@@ -12,6 +12,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Recipe> Recipes { get; set; }
     public DbSet<Ingredient> Ingredients { get; set; }
     public DbSet<RecipeIngredient> RecipeIngredients { get; set; }
+    public DbSet<DailyLog> DailyLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,10 +33,16 @@ public class ApplicationDbContext : DbContext
             .HasOne(ri => ri.Ingredient)
             .WithMany() // Ingredients do not need a back-reference to recipes here.
             .HasForeignKey(ri => ri.IngredientId);
-            
+
         // Store the Difficulty enum as a string for easier database readability.
         modelBuilder.Entity<Recipe>()
             .Property(r => r.Level)
             .HasConversion<string>();
+
+        // Configure the DailyLog -> ConsumedRecipes relationship.
+        modelBuilder.Entity<DailyLog>()
+            .HasMany(dl => dl.ConsumedRecipes)
+            .WithMany() // Recipes do not need a back-reference to daily logs here.
+            .UsingEntity(j => j.ToTable("DailyLogRecipes")); // Optional: specify the
     }
 }
