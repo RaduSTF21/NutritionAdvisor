@@ -1,11 +1,13 @@
 @page "/dashboard"
 @using MudBlazor
+@using System.Net
 @using System.Net.Http.Json
 @using System.Security.Claims
 @using NutritionAdvisor.Domain.Entities
 @using Frontend.Models
 @inject HttpClient Http
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
     <MudText Typo="Typo.h4" GutterBottom="true">👋 Welcome back!</MudText>
@@ -29,60 +31,152 @@
                     <div class="d-flex justify-space-between mb-4">
                         <MudText Typo="Typo.body1">BMI (Body Mass Index):</MudText>
                         <MudText Typo="Typo.body1" Color="@GetBmiColor(CalculateBmi())">
-                            <b>@CalculateBmi().ToString("F1")</b></MudText>
-                        </div>
-                        <MudAlert Severity="@GetBmiSeverity(CalculateBmi())" Variant="Variant.Filled" Dense="true">
-                            Status: @GetBmiStatus(CalculateBmi())
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-
-            <MudItem xs="12" md="6">
-                <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
-                    <MudText Typo="Typo.h6" GutterBottom="true">🍲 Recipe Library</MudText>
-                    <div class="text-center py-4">
-                        <MudText Typo="Typo.h3" Color="Color.Primary">@recipeCount</MudText>
-                        <MudText Typo="Typo.body1">Available Recipes</MudText>
-                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-4" href="/recipes">
-                            Browse Recipes
-                        </MudButton>
+                            <b>@CalculateBmi().ToString("F1")</b>
+                        </MudText>
                     </div>
-                </MudPaper>
-            </MudItem>
+                    <MudAlert Severity="@GetBmiSeverity(CalculateBmi())" Variant="Variant.Filled" Dense="true">
+                        Status: @GetBmiStatus(CalculateBmi())
+                    </MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
 
-            <MudItem xs="12">
-                <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
-                    <MudText Typo="Typo.h6" GutterBottom="true">🎯 Current Goal</MudText>
-                    <MudText Typo="Typo.body1">You are currently focusing on: <b>@(userProfile?.Objective ?? "Not Set")</b>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
+                <MudText Typo="Typo.h6" GutterBottom="true">🍲 Recipe Library</MudText>
+                <div class="text-center py-4">
+                    <MudText Typo="Typo.h3" Color="Color.Primary">@recipeCount</MudText>
+                    <MudText Typo="Typo.body1">Available Recipes</MudText>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-4" href="/recipes">
+                        Browse Recipes
+                    </MudButton>
+                </div>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
+                <MudText Typo="Typo.h6" GutterBottom="true">🎯 Current Goal</MudText>
+                <MudText Typo="Typo.body1">You are currently focusing on: <b>@(userProfile?.Objective ?? "Not Set")</b>
+                </MudText>
+                <MudProgressLinear Color="Color.Info" Value="100" Class="my-4" Size="Size.Large">
+                    <ChildContent>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Inherit"><b>Keep going!</b></MudText>
+                    </ChildContent>
+                </MudProgressLinear>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12">
+            <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
+                <MudText Typo="Typo.h6" GutterBottom="true"> Today's Meals</MudText>
+                @if (todayLog != null && todayLog.Meals.Any())
+                {
+                    <MudGrid>
+                        @foreach (var meal in todayLog.Meals)
+                        {
+                            <MudItem xs="12" sm="6" md="4">
+                                <MudCard Elevation="2" Class="rounded-lg mb-4">
+                                    <MudCardHeader>
+                                        <CardHeaderContent>
+                                            <MudText Typo="Typo.h6">@meal.Recipe.Title</MudText>
+                                            <MudText Typo="Typo.caption">🕒 @meal.EatenAt.ToLocalTime().ToString("HH:mm")
+                                            </MudText>
+                                        </CardHeaderContent>
+                                        <CardHeaderActions>
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                            Color="Color.Error"
+                                                            OnClick="@( () => DeleteMeal(meal.Id))" 
+                                                            Size="Size.Small" />    
+                                        </CardHeaderActions>
+                                    </MudCardHeader>
+                                    <MudCardContent>
+                                        <MudText Typo="Typo.body2">🔥 @meal.Recipe.TotalCalories.ToString("F0") kcal</MudText>
+                                    </MudCardContent>
+                                </MudCard>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2">No meals logged for today. Start by adding a meal from the recipe catalog!
                     </MudText>
-                    <MudProgressLinear Color="Color.Info" Value="100" Class="my-4" Size="Size.Large">
-                        <ChildContent>
-                            <MudText Typo="Typo.subtitle2" Color="Color.Inherit"><b>Keep going!</b></MudText>
-                        </ChildContent>
-                    </MudProgressLinear>
-                </MudPaper>
-            </MudItem>
-        </MudGrid>
-    </MudContainer>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
 
 @code {
     private UserProfile? userProfile;
     private int recipeCount = 0;
+    private DailyLog? todayLog;
 
+    private async Task DeleteMeal(Guid mealId)
+{
+    
+    var response = await Http.DeleteAsync($"api/meals/{mealId}");
+
+    if (response.IsSuccessStatusCode)
+    {
+        if (todayLog != null && todayLog.Meals != null)
+        {
+            todayLog.Meals = todayLog.Meals
+                .Where(m => m.Id != mealId)
+                .ToList();
+        }
+    }
+    else
+    {
+        Console.WriteLine("Nu am putut șterge masa din baza de date.");
+    }
+}
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
         if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
         {
             try
             {
-                userProfile = await Http.GetFromJsonAsync<UserProfile>($"api/UserProfile/{userId}");
+                var profileResponse = await Http.GetAsync($"api/UserProfile/{userId}");
+                if (profileResponse.StatusCode == HttpStatusCode.Unauthorized || profileResponse.StatusCode == HttpStatusCode.Forbidden)
+                {
+                    Navigation.NavigateTo("/login");
+                    return;
+                }
+
+                if (profileResponse.IsSuccessStatusCode)
+                {
+                    userProfile = await profileResponse.Content.ReadFromJsonAsync<UserProfile>();
+                }
             }
             catch { /* Profile might not exist yet */ }
+            try
+            {
+                var dailyLogResponse = await Http.GetAsync($"api/DailyLog/{userId}/{today}");
+                if (dailyLogResponse.StatusCode == HttpStatusCode.Unauthorized || dailyLogResponse.StatusCode == HttpStatusCode.Forbidden)
+                {
+                    Navigation.NavigateTo("/login");
+                    return;
+                }
+
+                if (dailyLogResponse.StatusCode == HttpStatusCode.NotFound)
+                {
+                    todayLog = null;
+                }
+                else if (dailyLogResponse.IsSuccessStatusCode)
+                {
+                    todayLog = await dailyLogResponse.Content.ReadFromJsonAsync<DailyLog>();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Eroare la citirea log-ului: {ex.Message}");
+            }
         }
 
         try
@@ -91,6 +185,8 @@
             recipeCount = recipes?.Count ?? 0;
         }
         catch { /* API might be offline */ }
+
+        
     }
 
     private double CalculateBmi()
@@ -111,6 +207,7 @@
     }
 
     private Color GetBmiColor(double bmi) => (bmi >= 18.5 && bmi < 25) ? Color.Success : Color.Error;
+
 
     private Severity GetBmiSeverity(double bmi) => (bmi >= 18.5 && bmi < 25) ? Severity.Success : Severity.Warning;
 }

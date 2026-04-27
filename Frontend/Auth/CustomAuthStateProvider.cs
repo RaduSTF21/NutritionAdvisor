@@ -25,22 +25,50 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
 
-        // 3. If present, decode it and create the authenticated identity.
-        var claims = ParseClaimsFromJwt(token);
-        var identity = new ClaimsIdentity(claims, "jwt");
-        var user = new ClaimsPrincipal(identity);
+        try
+        {
+            // 3. If present, decode it and create the authenticated identity.
+            var claims = ParseClaimsFromJwt(token).ToList();
 
-        return new AuthenticationState(user);
+            // Reject locally expired tokens to avoid false authenticated UI state.
+            var expClaim = claims.FirstOrDefault(c => c.Type == "exp")?.Value;
+            if (long.TryParse(expClaim, out var expUnixSeconds))
+            {
+                var expiresAt = DateTimeOffset.FromUnixTimeSeconds(expUnixSeconds);
+                if (expiresAt <= DateTimeOffset.UtcNow)
+                {
+                    await _localStorage.RemoveItemAsync("authToken");
+                    return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+                }
+            }
+
+            var identity = new ClaimsIdentity(claims, "jwt");
+            var user = new ClaimsPrincipal(identity);
+            return new AuthenticationState(user);
+        }
+        catch
+        {
+            // If token cannot be parsed, clear it and force anonymous state.
+            await _localStorage.RemoveItemAsync("authToken");
+            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+        }
     }
 
     // This is called immediately after a successful login.
     public void MarkUserAsAuthenticated(string token)
     {
-        var claims = ParseClaimsFromJwt(token);
-        var identity = new ClaimsIdentity(claims, "jwt");
-        var user = new ClaimsPrincipal(identity);
-
-        NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(user)));
+        try
+        {
+            var claims = ParseClaimsFromJwt(token);
+            var identity = new ClaimsIdentity(claims, "jwt");
+            var user = new ClaimsPrincipal(identity);
+            NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(user)));
+        }
+        catch
+        {
+            NotifyAuthenticationStateChanged(Task.FromResult(
+                new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()))));
+        }
     }
 
     public async Task MarkUserAsLoggedOut()
@@ -58,7 +86,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         var payload = jwt.Split('.')[1];
         var jsonBytes = ParseBase64WithoutPadding(payload);
         var keyValuePairs = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonBytes);
-        
+
         return keyValuePairs!.Select(kvp => new Claim(kvp.Key, kvp.Value?.ToString() ?? ""));
     }
 
@@ -72,5 +100,5 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         return Convert.FromBase64String(base64);
     }
 
-    
+
 }

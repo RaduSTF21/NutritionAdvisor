@@ -1,8 +1,10 @@
 @page "/add-ingredient"
 @using MudBlazor
+@using System.Security.Claims
 @inject HttpClient Http
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
     <MudPaper Class="pa-6" Elevation="3">
@@ -57,6 +59,13 @@
 
     private async Task SaveIngredient()
     {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(model.Name))
         {
             Snackbar.Add("Please enter an ingredient name.", Severity.Warning);

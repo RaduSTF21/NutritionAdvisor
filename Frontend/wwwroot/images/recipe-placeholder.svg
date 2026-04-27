@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" role="img" aria-label="Recipe image placeholder">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f3f4f6"/>
+      <stop offset="100%" stop-color="#e5e7eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bg)" rx="36"/>
+  <circle cx="600" cy="310" r="108" fill="#d1d5db"/>
+  <path d="M530 312c0-39 31-70 70-70s70 31 70 70-31 70-70 70-70-31-70-70zm36 0c0 19 15 34 34 34s34-15 34-34-15-34-34-34-34 15-34 34z" fill="#9ca3af"/>
+  <path d="M380 510h440c29 0 52 23 52 52v28c0 29-23 52-52 52H380c-29 0-52-23-52-52v-28c0-29 23-52 52-52z" fill="#cbd5e1"/>
+  <path d="M430 560h340" stroke="#94a3b8" stroke-width="18" stroke-linecap="round"/>
+  <path d="M430 602h250" stroke="#94a3b8" stroke-width="18" stroke-linecap="round"/>
+  <text x="600" y="690" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" fill="#6b7280">No recipe image available</text>
+</svg>

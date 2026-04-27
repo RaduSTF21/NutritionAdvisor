@@ -2,49 +2,56 @@
 @using MudBlazor
 @using NutritionAdvisor.Domain.Entities
 @using System.Security.Claims
+@using Frontend.Auth
+@using System.Net
 @inject HttpClient Http
 @inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
 
 <AuthorizeView>
     <Authorized>
-        @if(editing)
-            {
-                <MudText Typo = "Typo.h3" GutterBottom="true">Edit Profile</MudText>
-                <MudTextField Label="Name" @bind-Value="user.Name" />
-                <MudSelect Label="Gender" @bind-Value="user.Gender">
-                    <MudSelectItem Value="@("Male")">Male</MudSelectItem>
-                    <MudSelectItem Value="@("Female")">Female</MudSelectItem>
-                    <MudSelectItem Value="@("Other")">Other</MudSelectItem>
-                </MudSelect>
-                <MudSelect Label="Objective" @bind-Value="user.Objective">
-                    <MudSelectItem Value="@("Weight Loss")">Weight Loss</MudSelectItem>
-                    <MudSelectItem Value="@("Maintain")">Maintain</MudSelectItem>
-                    <MudSelectItem Value="@("Muscle Gain")">Muscle Gain</MudSelectItem>
-                </MudSelect>
-                <MudNumericField Label="Age" @bind-Value="user.Age" />
-                <MudNumericField Label="Weight (kg)" @bind-Value="user.Weight" />
-                <MudNumericField Label="Height (cm)" @bind-Value="user.Height" />
-                <MudTextField Label="Allergies" @bind-Value="user.Allergies" />
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProfile">Save</MudButton>
-                }
+        @if (editing)
+        {
+            <MudText Typo="Typo.h3" GutterBottom="true">Edit Profile</MudText>
+            <MudTextField Label="Name" @bind-Value="user.Name" />
+            <MudSelect Label="Gender" @bind-Value="user.Gender">
+                <MudSelectItem Value="@("Male")">Male</MudSelectItem>
+                <MudSelectItem Value="@("Female")">Female</MudSelectItem>
+                <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+            </MudSelect>
+            <MudSelect Label="Objective" @bind-Value="user.Objective">
+                <MudSelectItem Value="@("Weight Loss")">Weight Loss</MudSelectItem>
+                <MudSelectItem Value="@("Maintain")">Maintain</MudSelectItem>
+                <MudSelectItem Value="@("Muscle Gain")">Muscle Gain</MudSelectItem>
+            </MudSelect>
+            <MudNumericField Label="Age" @bind-Value="user.Age" />
+            <MudNumericField Label="Weight (kg)" @bind-Value="user.Weight" />
+            <MudNumericField Label="Height (cm)" @bind-Value="user.Height" />
+            <MudTextField Label="Allergies" @bind-Value="user.Allergies" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProfile">Save</MudButton>
+        }
         else
-            { <MudText Typo = "Typo.h3" GutterBottom="true">Profile</MudText>
-                <MudText><b>Name:</b> @user.Name</MudText>
-                <MudText><b>Gender:</b> @user.Gender</MudText>
-                <MudText><b>Objective:</b> @user.Objective</MudText>
-                <MudText><b>Age:</b> @user.Age</MudText>
-                <MudText><b>Weight:</b> @user.Weight kg</MudText>
-                <MudText><b>Height:</b> @user.Height cm</MudText>
-                <MudText><b>Allergies:</b> @user.Allergies</MudText>
-                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="() => editing = true">Edit</MudButton>
+        {
+
+            <MudText Typo="Typo.h3" GutterBottom="true">Profile</MudText>
+            <MudText><b>Name:</b> @user.Name</MudText>
+            <MudText><b>Gender:</b> @user.Gender</MudText>
+            <MudText><b>Objective:</b> @user.Objective</MudText>
+            <MudText><b>Age:</b> @user.Age</MudText>
+            <MudText><b>Weight:</b> @user.Weight kg</MudText>
+            <MudText><b>Height:</b> @user.Height cm</MudText>
+            <MudText><b>Allergies:</b> @user.Allergies</MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="() => editing = true">Edit</MudButton>
                 
-            }
+        }
     </Authorized>
     <NotAuthorized>
         <MudContainer MaxWidth="MaxWidth.Small" Class="mt-16 text-center">
             <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Large" Color="Color.Error" />
             <MudText Typo="Typo.h4" Class="mt-4">Access Denied</MudText>
-            <MudText Typo="Typo.body1" Class="mt-2 mb-6">You need to be logged in to view and edit your profile.</MudText>
+            <MudText Typo="Typo.body1" Class="mt-2 mb-6">You need to be logged in to view and edit your profile.
+            </MudText>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/login">Go to Login</MudButton>
         </MudContainer>
     </NotAuthorized>
@@ -75,23 +82,36 @@
                 currentUserId = userId;
                 user.UserId = userId;
                 
-                try 
+                try
                 {
-                    // Use the relative route because Program.cs sets the BaseAddress.
-                    var existingProfile = await Http.GetFromJsonAsync<UserProfile>($"api/UserProfile/{userId}");
-                    
-                    if (existingProfile != null) 
+                    var response = await Http.GetAsync($"api/UserProfile/{userId}");
+                    if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
                     {
-                        user = existingProfile;
+                        await HandleAuthorizationFailure();
+                        return;
                     }
-                    else 
+
+                    if (response.IsSuccessStatusCode)
                     {
-                        editing = true; // No profile yet, so open the form.
+                        var existingProfile = await response.Content.ReadFromJsonAsync<UserProfile>();
+                        if (existingProfile != null)
+                        {
+                            user = existingProfile;
+                        }
+                        else
+                        {
+                            editing = true;
+                        }
+                    }
+                    else
+                    {
+                        editing = true;
                     }
                 }
                 catch (Exception)
                 {
-                    editing = true; // Lookup failed, so open the form.
+                    editing = true;
+                    Snackbar.Add("Could not load profile details.", Severity.Warning);
                 }
             }
         }
@@ -100,9 +120,32 @@
     private async Task SaveProfile()
     {
         user.UserId = currentUserId;
-        
-        // Same here: use the relative address.
-        await Http.PostAsJsonAsync("api/userprofile", user);
-        editing = false;
+
+        var response = await Http.PostAsJsonAsync("api/userprofile", user);
+        if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+        {
+            await HandleAuthorizationFailure();
+            return;
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            editing = false;
+            Snackbar.Add("Profile saved successfully.", Severity.Success);
+            return;
+        }
+
+        Snackbar.Add("Profile could not be saved.", Severity.Error);
+    }
+
+    private async Task HandleAuthorizationFailure()
+    {
+        if (AuthStateProvider is CustomAuthStateProvider customAuth)
+        {
+            await customAuth.MarkUserAsLoggedOut();
+        }
+
+        Snackbar.Add("Session expired or invalid. Please log in again.", Severity.Warning);
+        Navigation.NavigateTo("/login");
     }
 }

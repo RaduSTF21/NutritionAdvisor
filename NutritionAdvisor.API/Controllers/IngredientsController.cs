@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NutritionAdvisor.Application.Ingredients.Commands.CreateIngredient;
 using NutritionAdvisor.Application.Ingredients.Queries.SearchIngredients;
@@ -25,6 +26,7 @@ public class IngredientsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize]
     public async Task<IActionResult> Create([FromBody] CreateIngredientCommand command)
     {
         var id = await _mediator.Send(command);

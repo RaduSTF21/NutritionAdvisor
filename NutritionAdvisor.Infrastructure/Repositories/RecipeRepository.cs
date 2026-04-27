@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NutritionAdvisor.Application.Interfaces;
 using NutritionAdvisor.Domain.Entities;
+using NutritionAdvisor.Domain.Enums;
 using NutritionAdvisor.Infrastructure.Databases;
 
 namespace NutritionAdvisor.Infrastructure.Repositories;
@@ -28,6 +29,35 @@ public class RecipeRepository : IRecipeRepository
             .Include(r => r.Ingredients)             // Load the join rows.
             .ThenInclude(ri => ri.Ingredient)        // Load the related ingredient data.
             .ToListAsync(ct);
+    }
+
+    public async Task<IEnumerable<Recipe>> FilterAsync(string? searchTerm, string? tag, Difficulty? level, CancellationToken ct)
+    {
+        var query = _context.Recipes
+            .Include(r => r.Ingredients)
+            .ThenInclude(ri => ri.Ingredient)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.Trim().ToLower();
+            query = query.Where(r =>
+                (r.Title != null && r.Title.ToLower().Contains(term)) ||
+                (r.Description != null && r.Description.ToLower().Contains(term)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(tag))
+        {
+            var normalizedTag = tag.Trim().ToLower();
+            query = query.Where(r => r.Tags.Any(t => t.ToLower() == normalizedTag));
+        }
+
+        if (level.HasValue)
+        {
+            query = query.Where(r => r.Level == level.Value);
+        }
+
+        return await query.ToListAsync(ct);
     }
 
     public async Task AddAsync(Recipe recipe, CancellationToken ct)

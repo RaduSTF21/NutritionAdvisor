@@ -1,0 +1,109 @@
+@page "/food-preferences"
+@using NutritionAdvisor.Domain.Enums
+@using Frontend.Auth
+@using System.Net
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
+    <MudText Typo="Typo.h4" GutterBottom="true">Food Preferences</MudText>
+
+    <MudPaper Class="pa-4">
+        <MudSelect T="DietType" Label="Diet type" @bind-Value="model.DietType" Class="mb-4">
+            @foreach (var dietType in Enum.GetValues<DietType>())
+            {
+                <MudSelectItem T="DietType" Value="@dietType">@dietType</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudTextField Label="Preferred cuisines (comma separated)" @bind-Value="preferredCuisinesText" Class="mb-3" />
+
+        <MudTextField Label="Disliked ingredients (comma separated)" @bind-Value="dislikedIngredientsText"
+                      Class="mb-4" />
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Save Preferences</MudButton>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private FoodPreferenceVm model = new();
+    private string preferredCuisinesText = string.Empty;
+    private string dislikedIngredientsText = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/FoodPreferences");
+            if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                await HandleAuthorizationFailure();
+                return;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                var existing = await response.Content.ReadFromJsonAsync<FoodPreferenceVm>();
+                if (existing != null)
+                {
+                    model = existing;
+                    preferredCuisinesText = string.Join(", ", model.PreferredCuisines);
+                    dislikedIngredientsText = string.Join(", ", model.DislikedIngredients);
+                }
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Could not load food preferences.", Severity.Warning);
+        }
+    }
+
+    private async Task Save()
+    {
+        model.PreferredCuisines = ParseCsv(preferredCuisinesText);
+        model.DislikedIngredients = ParseCsv(dislikedIngredientsText);
+
+        var response = await Http.PostAsJsonAsync("api/FoodPreferences", model);
+        if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+        {
+            await HandleAuthorizationFailure();
+            return;
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Preferences saved.", Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add("Could not save preferences.", Severity.Error);
+        }
+    }
+
+    private static List<string> ParseCsv(string input)
+    {
+        return input
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .ToList();
+    }
+
+    private async Task HandleAuthorizationFailure()
+    {
+        if (AuthStateProvider is CustomAuthStateProvider customAuth)
+        {
+            await customAuth.MarkUserAsLoggedOut();
+        }
+
+        Snackbar.Add("Session expired or invalid. Please log in again.", Severity.Warning);
+        Navigation.NavigateTo("/login");
+    }
+
+    private class FoodPreferenceVm
+    {
+        public DietType DietType { get; set; } = DietType.None;
+        public List<string> PreferredCuisines { get; set; } = new();
+        public List<string> DislikedIngredients { get; set; } = new();
+    }
+}
