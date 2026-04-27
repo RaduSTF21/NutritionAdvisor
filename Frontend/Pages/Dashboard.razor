@@ -7,6 +7,7 @@
 @using Frontend.Models
 @inject HttpClient Http
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
     <MudText Typo="Typo.h4" GutterBottom="true">👋 Welcome back!</MudText>
@@ -141,12 +142,28 @@
         {
             try
             {
-                userProfile = await Http.GetFromJsonAsync<UserProfile>($"api/UserProfile/{userId}");
+                var profileResponse = await Http.GetAsync($"api/UserProfile/{userId}");
+                if (profileResponse.StatusCode == HttpStatusCode.Unauthorized || profileResponse.StatusCode == HttpStatusCode.Forbidden)
+                {
+                    Navigation.NavigateTo("/login");
+                    return;
+                }
+
+                if (profileResponse.IsSuccessStatusCode)
+                {
+                    userProfile = await profileResponse.Content.ReadFromJsonAsync<UserProfile>();
+                }
             }
             catch { /* Profile might not exist yet */ }
             try
             {
                 var dailyLogResponse = await Http.GetAsync($"api/DailyLog/{userId}/{today}");
+                if (dailyLogResponse.StatusCode == HttpStatusCode.Unauthorized || dailyLogResponse.StatusCode == HttpStatusCode.Forbidden)
+                {
+                    Navigation.NavigateTo("/login");
+                    return;
+                }
+
                 if (dailyLogResponse.StatusCode == HttpStatusCode.NotFound)
                 {
                     todayLog = null;

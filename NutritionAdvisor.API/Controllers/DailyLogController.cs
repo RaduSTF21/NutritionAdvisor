@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NutritionAdvisor.Application.DailyLogs.Commands.LogMeal;
 using NutritionAdvisor.Application.DailyLogs.Queries.GetDailyLog;
+using NutritionAdvisor.Domain.Entities;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -50,7 +51,12 @@ public class DailyLogController : ControllerBase
         var query = new GetDailyLogQuery { UserId = userId, Date = date };
         var result = await _sender.Send(query);
         if (result == null)
-            return NotFound();
+            return Ok(new DailyLog
+            {
+                UserId = userId,
+                Date = date.Date,
+                Meals = new List<Meal>()
+            });
         return Ok(result);
     }
 }

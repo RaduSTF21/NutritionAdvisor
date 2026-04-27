@@ -2,9 +2,11 @@
 @using Frontend.Models
 @using System.IO
 @using System.Text.Json.Serialization
+@using System.Security.Claims
 @inject HttpClient Http
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
     <MudText Typo="Typo.h4" GutterBottom="true">Create Recipe</MudText>
@@ -162,6 +164,13 @@ Http.GetFromJsonAsync<List<IngredientSearchResult>>($"api/Ingredients/search?sea
 
     private async Task SaveRecipe()
     {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
         newRecipe.Ingredients = selectedIngredients.Select(i => new RecipeIngredientDto
         {
             IngredientId = i.Id,

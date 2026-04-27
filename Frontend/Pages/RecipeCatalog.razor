@@ -38,7 +38,12 @@
             {
                 <MudItem xs="12" sm="6" md="4">
                     <MudCard Elevation="3" Class="rounded-lg h-100">
-                        <MudCardMedia Image="@BuildImageUrl(recipe.ImageURL)" Height="200" />
+                        <div class="recipe-image-wrapper">
+                            <img src="@BuildImageUrl(recipe.ImageURL)" alt="@recipe.Title"
+                                 class="recipe-image recipe-image-card"
+                                 style="width:100%;height:200px;object-fit:cover;display:block;"
+                                 onerror="this.onerror=null;this.src='/images/recipe-placeholder.svg';" />
+                        </div>
                         <MudCardContent>
                             <MudText Typo="Typo.h6">@recipe.Title</MudText>
                             <MudText Typo="Typo.body2" Class="text-muted mb-2">⏱ @recipe.CookingTimeInMinutes min |
@@ -95,7 +100,7 @@
     private string BuildImageUrl(string? url)
     {
         if (string.IsNullOrEmpty(url))
-            return NoImagePlaceholder;
+            return "/images/recipe-placeholder.svg";
 
         if (url.StartsWith("http"))
             return url;

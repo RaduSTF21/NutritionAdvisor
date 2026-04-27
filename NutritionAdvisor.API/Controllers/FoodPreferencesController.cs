@@ -31,7 +31,13 @@ public class FoodPreferencesController : ControllerBase
         var result = await _sender.Send(new GetUserFoodPreferencesQuery(userId));
         if (result == null)
         {
-            return NotFound();
+            return Ok(new NutritionAdvisor.Domain.Entities.FoodPreference
+            {
+                UserId = userId,
+                DietType = NutritionAdvisor.Domain.Enums.DietType.None,
+                PreferredCuisines = new List<string>(),
+                DislikedIngredients = new List<string>()
+            });
         }
 
         return Ok(result);
