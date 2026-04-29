@@ -1,0 +1,251 @@
+@page "/ai"
+@using Frontend.Auth
+@using Frontend.Models
+@using System.Net
+@using System.Net.Http.Json
+@using System.Security.Claims
+@inject HttpClient Http
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
+    <MudPaper Class="pa-6 ai-hero" Elevation="3">
+        <MudText Typo="Typo.h4" Class="mb-2">AI Hub</MudText>
+        <MudText Typo="Typo.body1" Class="mb-4">Test the free recommendation flow and the premium AI tools from the browser.</MudText>
+
+        @if (subscription == null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else
+        {
+            <MudChip T="string" Color="@(CanUsePremium ? Color.Success : Color.Info)">Current plan: @subscription.Plan</MudChip>
+            <MudChip T="string" Class="ms-2" Color="@(CanUsePremium ? Color.Success : Color.Default)">Status: @subscription.Status</MudChip>
+        }
+    </MudPaper>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" md="4">
+            <MudCard Class="pa-4 h-100" Elevation="2">
+                <MudText Typo="Typo.h6">Free recommendations</MudText>
+                <MudNumericField T="int" Label="Limit" @bind-Value="recommendationLimit" Min="1" Max="12" Class="mt-3" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3" FullWidth="true" OnClick="LoadRecommendations" Disabled="@isLoadingRecommendations">
+                    Generate free picks
+                </MudButton>
+
+                @if (recommendations.Count > 0)
+                {
+                    <MudDivider Class="my-4" />
+                    @foreach (var item in recommendations)
+                    {
+                        <MudCard Class="pa-3 mb-3" Elevation="1">
+                            <MudText Typo="Typo.subtitle1"><b>@item.Title</b></MudText>
+                            <MudText Typo="Typo.caption">@item.Reason</MudText>
+                            <MudText Typo="Typo.body2" Class="mt-2">@item.CookingTimeInMinutes min | @(item.Premium ? "Premium" : "Free")</MudText>
+                        </MudCard>
+                    }
+                }
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudCard Class="pa-4 h-100" Elevation="2">
+                <MudText Typo="Typo.h6">Premium meal plan</MudText>
+                <MudNumericField T="int" Label="Days" @bind-Value="mealPlanDays" Min="1" Max="14" Class="mt-3" />
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary" Class="mt-3" FullWidth="true" OnClick="GenerateMealPlan" Disabled="@(!CanUsePremium || isLoadingMealPlan)">
+                    Generate meal plan
+                </MudButton>
+                @if (!CanUsePremium)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-3">Premium users only. Open the subscription page to verify your plan.</MudAlert>
+                }
+                @if (mealPlan != null)
+                {
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.subtitle1"><b>@mealPlan.Summary</b></MudText>
+                    @foreach (var day in mealPlan.Days)
+                    {
+                        <MudText Typo="Typo.body2" Class="mt-2">@day.Date - @day.Title (@day.Calories kcal)</MudText>
+                    }
+                }
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudCard Class="pa-4 h-100" Elevation="2">
+                <MudText Typo="Typo.h6">AI coach</MudText>
+                <MudTextField T="string" Label="Question" @bind-Value="coachMessage" Lines="4" Class="mt-3" />
+                <MudTextField T="string" Label="Context (optional)" @bind-Value="coachContext" Class="mt-3" />
+                <MudButton Variant="Variant.Filled" Color="Color.Success" Class="mt-3" FullWidth="true" OnClick="AskCoach" Disabled="@(!CanUsePremium || isLoadingCoach)">
+                    Ask coach
+                </MudButton>
+                @if (!CanUsePremium)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-3">The coach is locked to active premium subscriptions.</MudAlert>
+                }
+                @if (coach != null)
+                {
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.subtitle1"><b>@coach.Answer</b></MudText>
+                    <MudStack Spacing="1" Class="mt-2">
+                        @foreach (var tip in coach.Tips)
+                        {
+                            <MudText Typo="Typo.body2">• @tip</MudText>
+                        }
+                    </MudStack>
+                }
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private SubscriptionModel? subscription;
+    private int recommendationLimit = 5;
+    private int mealPlanDays = 7;
+    private string coachMessage = "How can I improve my daily nutrition?";
+    private string? coachContext;
+    private bool isLoadingRecommendations;
+    private bool isLoadingMealPlan;
+    private bool isLoadingCoach;
+    private List<AiRecommendationItemModel> recommendations = new();
+    private AiMealPlanResponseModel? mealPlan;
+    private AiCoachResponseModel? coach;
+
+    private bool CanUsePremium => subscription != null
+        && string.Equals(subscription.Plan, "Premium", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(subscription.Status, "Active", StringComparison.OrdinalIgnoreCase)
+        && subscription.ExpiresAt > DateTime.UtcNow;
+
+    private bool IsPremium => CanUsePremium;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        await LoadSubscriptionAsync();
+    }
+
+    private async Task LoadSubscriptionAsync()
+    {
+        var response = await Http.GetAsync("api/subscription/me");
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            await HandleAuthorizationFailure();
+            return;
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            subscription = await response.Content.ReadFromJsonAsync<SubscriptionModel>();
+        }
+    }
+
+    private async Task LoadRecommendations()
+    {
+        isLoadingRecommendations = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/ai/recommend-recipes", new AiRecommendationRequestModel(recommendationLimit));
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                await HandleAuthorizationFailure();
+                return;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                var payload = await response.Content.ReadFromJsonAsync<AiRecommendationResponseModel>();
+                recommendations = payload?.Recommendations.ToList() ?? new List<AiRecommendationItemModel>();
+                Snackbar.Add($"Loaded {recommendations.Count} AI recommendations.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Could not load recommendations.", Severity.Error);
+            }
+        }
+        finally
+        {
+            isLoadingRecommendations = false;
+        }
+    }
+
+    private async Task GenerateMealPlan()
+    {
+        isLoadingMealPlan = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/ai/generate-meal-plan", new AiMealPlanRequestModel(mealPlanDays));
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                await HandleAuthorizationFailure();
+                return;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                mealPlan = await response.Content.ReadFromJsonAsync<AiMealPlanResponseModel>();
+                Snackbar.Add("Premium meal plan generated.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Premium meal plan is not available for the current subscription.", Severity.Warning);
+            }
+        }
+        finally
+        {
+            isLoadingMealPlan = false;
+        }
+    }
+
+    private async Task AskCoach()
+    {
+        if (string.IsNullOrWhiteSpace(coachMessage))
+        {
+            Snackbar.Add("Please type a question first.", Severity.Warning);
+            return;
+        }
+
+        isLoadingCoach = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/ai/coach", new AiCoachRequestModel(coachMessage, coachContext));
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                await HandleAuthorizationFailure();
+                return;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                coach = await response.Content.ReadFromJsonAsync<AiCoachResponseModel>();
+                Snackbar.Add("AI coach replied.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("AI coach is locked for premium accounts.", Severity.Warning);
+            }
+        }
+        finally
+        {
+            isLoadingCoach = false;
+        }
+    }
+
+    private async Task HandleAuthorizationFailure()
+    {
+        if (AuthStateProvider is CustomAuthStateProvider customAuth)
+        {
+            await customAuth.MarkUserAsLoggedOut();
+        }
+
+        Snackbar.Add("Session expired or invalid. Please log in again.", Severity.Warning);
+        Navigation.NavigateTo("/login");
+    }
+}
