@@ -55,57 +55,80 @@
         </MudItem>
 
         <MudItem xs="12">
-            <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
-                <MudText Typo="Typo.h6" GutterBottom="true">🎯 Current Goal</MudText>
-                <MudText Typo="Typo.body1">You are currently focusing on: <b>@(userProfile?.Objective ?? "Not Set")</b>
-                </MudText>
-                <MudProgressLinear Color="Color.Info" Value="100" Class="my-4" Size="Size.Large">
-                    <ChildContent>
-                        <MudText Typo="Typo.subtitle2" Color="Color.Inherit"><b>Keep going!</b></MudText>
-                    </ChildContent>
-                </MudProgressLinear>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12">
-            <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
-                <MudText Typo="Typo.h6" GutterBottom="true"> Today's Meals</MudText>
-                @if (todayLog != null && todayLog.Meals.Any())
-                {
-                    <MudGrid>
-                        @foreach (var meal in todayLog.Meals)
-                        {
-                            <MudItem xs="12" sm="6" md="4">
-                                <MudCard Elevation="2" Class="rounded-lg mb-4">
-                                    <MudCardHeader>
-                                        <CardHeaderContent>
-                                            <MudText Typo="Typo.h6">@meal.Recipe.Title</MudText>
-                                            <MudText Typo="Typo.caption">🕒 @meal.EatenAt.ToLocalTime().ToString("HH:mm")
-                                            </MudText>
-                                        </CardHeaderContent>
-                                        <CardHeaderActions>
-                                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                                            Color="Color.Error"
-                                                            OnClick="@( () => DeleteMeal(meal.Id))" 
-                                                            Size="Size.Small" />    
-                                        </CardHeaderActions>
-                                    </MudCardHeader>
-                                    <MudCardContent>
-                                        <MudText Typo="Typo.body2">🔥 @meal.Recipe.TotalCalories.ToString("F0") kcal</MudText>
-                                    </MudCardContent>
-                                </MudCard>
-                            </MudItem>
-                        }
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="p-4 rounded-lg shadow-sm h-100" Elevation="2">
+                        <MudText Typo="Typo.h6" GutterBottom="true">Subscription</MudText>
+                        <MudText Typo="Typo.body1">Check whether your account is free or premium before trying the AI
+                            tools.</MudText>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" href="/subscription">
+                                Open subscription
+                            </MudButton>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="p-4 rounded-lg shadow-sm h-100" Elevation="2">
+                            <MudText Typo="Typo.h6" GutterBottom="true">AI Hub</MudText>
+                            <MudText Typo="Typo.body1">Run free recipe recommendations or unlock premium meal plans and the
+                                coach.</MudText>
+                                <MudButton Variant="Variant.Filled" Color="Color.Secondary" Class="mt-4" href="/ai">
+                                    Open AI hub
+                                </MudButton>
+                            </MudPaper>
+                        </MudItem>
                     </MudGrid>
-                }
-                else
-                {
-                    <MudText Typo="Typo.body2">No meals logged for today. Start by adding a meal from the recipe catalog!
-                    </MudText>
-                }
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
-</MudContainer>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
+                        <MudText Typo="Typo.h6" GutterBottom="true">🎯 Current Goal</MudText>
+                        <MudText Typo="Typo.body1">You are currently focusing on: <b>@(userProfile?.Objective ?? "Not Set")</b>
+                        </MudText>
+                        <MudProgressLinear Color="Color.Info" Value="100" Class="my-4" Size="Size.Large">
+                            <ChildContent>
+                                <MudText Typo="Typo.subtitle2" Color="Color.Inherit"><b>Keep going!</b></MudText>
+                            </ChildContent>
+                        </MudProgressLinear>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
+                        <MudText Typo="Typo.h6" GutterBottom="true"> Today's Meals</MudText>
+                        @if (todayLog != null && todayLog.Meals.Any())
+                        {
+                            <MudGrid>
+                                @foreach (var meal in todayLog.Meals)
+                                {
+                                    <MudItem xs="12" sm="6" md="4">
+                                        <MudCard Elevation="2" Class="rounded-lg mb-4">
+                                            <MudCardHeader>
+                                                <CardHeaderContent>
+                                                    <MudText Typo="Typo.h6">@meal.Recipe.Title</MudText>
+                                                    <MudText Typo="Typo.caption">🕒 @meal.EatenAt.ToLocalTime().ToString("HH:mm")
+                                                    </MudText>
+                                                </CardHeaderContent>
+                                                <CardHeaderActions>
+                                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                                                   OnClick="@( () => DeleteMeal(meal.Id))" Size="Size.Small" />
+                                                </CardHeaderActions>
+                                            </MudCardHeader>
+                                            <MudCardContent>
+                                                <MudText Typo="Typo.body2">🔥 @meal.Recipe.TotalCalories.ToString("F0") kcal</MudText>
+                                            </MudCardContent>
+                                        </MudCard>
+                                    </MudItem>
+                                }
+                            </MudGrid>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2">No meals logged for today. Start by adding a meal from the recipe catalog!
+                            </MudText>
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudContainer>
 
 @code {
     private UserProfile? userProfile;
@@ -113,24 +136,24 @@
     private DailyLog? todayLog;
 
     private async Task DeleteMeal(Guid mealId)
-{
-    
-    var response = await Http.DeleteAsync($"api/meals/{mealId}");
-
-    if (response.IsSuccessStatusCode)
     {
-        if (todayLog != null && todayLog.Meals != null)
+    
+        var response = await Http.DeleteAsync($"api/meals/{mealId}");
+
+        if (response.IsSuccessStatusCode)
         {
-            todayLog.Meals = todayLog.Meals
-                .Where(m => m.Id != mealId)
-                .ToList();
+            if (todayLog != null && todayLog.Meals != null)
+            {
+                todayLog.Meals = todayLog.Meals
+                    .Where(m => m.Id != mealId)
+                    .ToList();
+            }
+        }
+        else
+        {
+            Console.WriteLine("Nu am putut șterge masa din baza de date.");
         }
     }
-    else
-    {
-        Console.WriteLine("Nu am putut șterge masa din baza de date.");
-    }
-}
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -158,7 +181,8 @@
             try
             {
                 var dailyLogResponse = await Http.GetAsync($"api/DailyLog/{userId}/{today}");
-                if (dailyLogResponse.StatusCode == HttpStatusCode.Unauthorized || dailyLogResponse.StatusCode == HttpStatusCode.Forbidden)
+                if (dailyLogResponse.StatusCode == HttpStatusCode.Unauthorized || dailyLogResponse.StatusCode ==
+HttpStatusCode.Forbidden)
                 {
                     Navigation.NavigateTo("/login");
                     return;

@@ -6,6 +6,9 @@ using Microsoft.IdentityModel.Tokens;
 using NutritionAdvisor.Application.Interfaces;
 using NutritionAdvisor.Infrastructure.Databases;
 using NutritionAdvisor.Infrastructure.Repositories;
+using NutritionAdvisor.Infrastructure.Options;
+using NutritionAdvisor.Infrastructure.Services;
+using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,7 +38,37 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("RequirePremium", policy =>
+        policy.RequireClaim("subscription_plan", "Premium"));
+
+    options.AddPolicy("RequireActiveSubscription", policy =>
+        policy.RequireAssertion(context =>
+        {
+            if (!context.User.HasClaim(c => c.Type == "subscription_status" && c.Value == "Active"))
+            {
+                return false;
+            }
+
+            var expiresAtClaim = context.User.FindFirst("subscription_expires_at")?.Value;
+            if (string.IsNullOrWhiteSpace(expiresAtClaim))
+            {
+                return false;
+            }
+
+            if (!DateTime.TryParse(
+                expiresAtClaim,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var expiresAt))
+            {
+                return false;
+            }
+
+            return expiresAt > DateTime.UtcNow;
+        }));
+});
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -50,6 +83,8 @@ builder.Services.AddScoped<IDailyLogRepository, DailyLogRepository>();
 builder.Services.AddScoped<IFoodPreferenceRepository, FoodPreferenceRepository>();
 builder.Services.AddScoped<IAllergyRepository, AllergyRepository>();
 builder.Services.AddScoped<IFileStorageService, NutritionAdvisor.Infrastructure.Services.LocalFileStorageService>();
+builder.Services.Configure<PythonAiOptions>(builder.Configuration.GetSection("PythonAI"));
+builder.Services.AddHttpClient<IPythonAiService, PythonAiService>();
 
 // --- CONFIGURARE CORS (Frontend in Docker ruleaza pe 5210) ---
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
