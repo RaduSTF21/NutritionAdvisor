@@ -24,7 +24,7 @@ public class UserRepository : IUserRepository
     {
         return await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
     }
-    
+
     public async Task UpdateAsync(User user)
     {
         _dbContext.Users.Update(user);
@@ -34,5 +34,11 @@ public class UserRepository : IUserRepository
     public async Task<User?> GetByIdAsync(Guid id)
     {
         return await _dbContext.Users.FirstOrDefaultAsync(u => u.UserId == id);
+    }
+
+    // NOU: Implementarea căutării
+    public async Task<User?> GetByProviderSubscriptionIdAsync(string providerSubscriptionId)
+    {
+        return await _dbContext.Users.FirstOrDefaultAsync(u => u.ProviderSubscriptionId == providerSubscriptionId);
     }
 }

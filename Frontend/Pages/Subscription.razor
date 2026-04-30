@@ -12,60 +12,78 @@
 <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
     <MudPaper Class="pa-6 subscription-hero" Elevation="3">
         <MudText Typo="Typo.h4" Class="mb-2">Subscription</MudText>
-        <MudText Typo="Typo.body1" Class="mb-4">Check your current plan and jump to the AI features available for your
-            account.</MudText>
+        <MudText Typo="Typo.body1" Class="mb-4">Check your current plan and manage your recurring billing.</MudText>
 
-            @if (subscription == null)
-            {
-                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
-            }
-            else
-            {
-                <MudGrid>
-                    <MudItem xs="12" md="6">
-                        <MudCard Elevation="2" Class="pa-4 h-100">
-                            <MudText Typo="Typo.h6">Current plan</MudText>
-                            <MudText Typo="Typo.h4" Color="@(IsPremium? Color.Success: Color.Info)">@subscription.Plan
+        @if (subscription == null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else
+        {
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2" Class="pa-4 h-100">
+                        <MudText Typo="Typo.h6">Current plan</MudText>
+                        <MudText Typo="Typo.h4" Color="@(IsPremium ? Color.Success : Color.Info)">@subscription.Plan</MudText>
+                        <MudChip T="string" Color="@(IsPremium ? Color.Success : Color.Default)" Class="mt-2">
+                            @subscription.Status
+                        </MudChip>
+
+                        @if (subscription.ExpiresAt.HasValue && IsPremium)
+                        {
+                            <MudText Typo="Typo.body2" Class="mt-4">
+                                @if (subscription.AutoRenew)
+                                {
+                                    <span>Next billing date: <b>@subscription.ExpiresAt.Value.ToString("MMM dd, yyyy")</b></span>
+                                }
+                                else
+                                {
+                                    <span style="color: var(--mud-palette-warning);">Cancels on: <b>@subscription.ExpiresAt.Value.ToString("MMM dd, yyyy")</b> (No further charges)</span>
+                                }
                             </MudText>
-                            <MudChip T="string" Color="@(IsPremium? Color.Success: Color.Default)" Class="mt-2">
-                                @subscription.Status</MudChip>
-                                <MudText Class="mt-4">Expires: @(subscription.ExpiresAt?.ToString("yyyy-MM-dd HH:mm") ?? "No expiration set")</MudText>
-                            </MudCard>
-                        </MudItem>
+                        }
+                    </MudCard>
+                </MudItem>
 
-                        <MudItem xs="12" md="6">
-                            <MudCard Elevation="2" Class="pa-4 h-100">
-                                <MudText Typo="Typo.h6">Available actions</MudText>
-                                <MudStack Spacing="2" Class="mt-3">
-                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/ai">
-                                        Open AI hub
-                                    </MudButton>
-                                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="/recipes">
-                                        Browse recipes
-                                    </MudButton>
-                            
-                                    @if (!IsPremium)
-                                    {
-                                        <MudButton Variant="Variant.Filled" Color="Color.Tertiary"
-                                                   StartIcon="@Icons.Material.Filled.Star" OnClick="HandleUpgrade" Class="mt-2">
-                                            Upgrade to Premium
-                                        </MudButton>
-                                    }
-                                </MudStack>
-                            </MudCard>
-                        </MudItem>
-                    </MudGrid>
-                }
-            </MudPaper>
-        </MudContainer>
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2" Class="pa-4 h-100">
+                        <MudText Typo="Typo.h6">Available actions</MudText>
+                        <MudStack Spacing="2" Class="mt-3">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/ai">
+                                Open AI hub
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="/recipes">
+                                Browse recipes
+                            </MudButton>
+
+                            @if (!IsPremium)
+                            {
+                                <MudButton Variant="Variant.Filled" Color="Color.Tertiary"
+                                           StartIcon="@Icons.Material.Filled.Star" OnClick="HandleUpgrade" Class="mt-2">
+                                    Upgrade to Premium
+                                </MudButton>
+                            }
+                            else if (subscription.AutoRenew)
+                            {
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Cancel" OnClick="HandleCancel" Class="mt-2" Disabled="@isCanceling">
+                                    @if(isCanceling) { <span>Processing...</span> } else { <span>Cancel Subscription</span> }
+                                </MudButton>
+                            }
+                        </MudStack>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudPaper>
+</MudContainer>
 
 @code {
     private SubscriptionModel? subscription;
+    private bool isCanceling = false;
 
     private bool IsPremium => subscription != null
         && string.Equals(subscription.Plan, "Premium", StringComparison.OrdinalIgnoreCase)
-        && string.Equals(subscription.Status, "Active", StringComparison.OrdinalIgnoreCase)
-        && subscription.ExpiresAt > DateTime.UtcNow;
+        && string.Equals(subscription.Status, "Active", StringComparison.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
@@ -119,6 +137,28 @@
         catch (Exception)
         {
             Snackbar.Add("A connection error occurred.", Severity.Error);
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        isCanceling = true;
+        try
+        {
+            var response = await Http.PostAsync("api/payments/cancel-subscription", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Subscription canceled. You will keep premium access until the end of your billing cycle.", Severity.Success);
+                await LoadSubscriptionAsync(); // Refresh to update the UI
+            }
+            else
+            {
+                Snackbar.Add("Could not cancel subscription. Please try again.", Severity.Error);
+            }
+        }
+        finally
+        {
+            isCanceling = false;
         }
     }
 

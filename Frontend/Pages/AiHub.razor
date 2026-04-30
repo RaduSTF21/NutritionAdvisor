@@ -12,118 +12,106 @@
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
     <MudPaper Class="pa-6 ai-hero" Elevation="3">
         <MudText Typo="Typo.h4" Class="mb-2">AI Hub</MudText>
-        <MudText Typo="Typo.body1" Class="mb-4">Test the free recommendation flow and the premium AI tools from the
-            browser.</MudText>
+        <MudText Typo="Typo.body1" Class="mb-4">Test the free recommendation flow and the premium AI tools from the browser.</MudText>
 
-            @if (subscription == null)
-            {
-                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
-            }
-            else
-            {
-                <MudChip T="string" Color="@(CanUsePremium? Color.Success: Color.Info)">Current plan: @subscription.Plan
-                </MudChip>
-                <MudChip T="string" Class="ms-2" Color="@(CanUsePremium? Color.Success: Color.Default)">Status:
-                    @subscription.Status</MudChip>
+        @if (subscription == null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else
+        {
+            <MudChip T="string" Color="@(CanUsePremium? Color.Success: Color.Info)">Current plan: @subscription.Plan</MudChip>
+            <MudChip T="string" Class="ms-2" Color="@(CanUsePremium? Color.Success: Color.Default)">Status: @subscription.Status</MudChip>
+        }
+    </MudPaper>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" md="4">
+            <MudCard Class="pa-4 h-100" Elevation="2">
+                <MudText Typo="Typo.h6">Free recommendations</MudText>
+                <MudNumericField T="int" Label="Limit" @bind-Value="recommendationLimit" Min="1" Max="12" Class="mt-3" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3" FullWidth="true" OnClick="LoadRecommendations" Disabled="@isLoadingRecommendations">
+                    Generate free picks
+                </MudButton>
+
+                @if (recommendations.Count > 0)
+                {
+                    <MudDivider Class="my-4" />
+                    @foreach (var item in recommendations)
+                    {
+                        <MudCard Class="pa-3 mb-3" Elevation="1">
+                            <MudText Typo="Typo.subtitle1"><b>@item.Title</b></MudText>
+                            <MudText Typo="Typo.caption">@item.Reason</MudText>
+                            <MudText Typo="Typo.body2" Class="mt-2">@item.CookingTimeInMinutes min | @(item.Premium ? "Premium" : "Free")</MudText>
+                        </MudCard>
+                    }
                 }
-            </MudPaper>
+            </MudCard>
+        </MudItem>
 
-            <MudGrid Class="mt-4">
-                <MudItem xs="12" md="4">
-                    <MudCard Class="pa-4 h-100" Elevation="2">
-                        <MudText Typo="Typo.h6">Free recommendations</MudText>
-                        <MudNumericField T="int" Label="Limit" @bind-Value="recommendationLimit" Min="1" Max="12"
-                                         Class="mt-3" />
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3" FullWidth="true"
-                                   OnClick="LoadRecommendations" Disabled="@isLoadingRecommendations">
-                            Generate free picks
-                        </MudButton>
-
-                        @if (recommendations.Count > 0)
-                        {
-                            <MudDivider Class="my-4" />
-                            @foreach (var item in recommendations)
-                            {
-                                <MudCard Class="pa-3 mb-3" Elevation="1">
-                                    <MudText Typo="Typo.subtitle1"><b>@item.Title</b></MudText>
-                                    <MudText Typo="Typo.caption">@item.Reason</MudText>
-                                    <MudText Typo="Typo.body2" Class="mt-2">@item.CookingTimeInMinutes min | @(item.Premium ? "Premium" : "Free")</MudText>
-                                </MudCard>
-                            }
-                        }
-                    </MudCard>
-                </MudItem>
-
-                <MudItem xs="12" md="4">
-                    <MudCard Class="pa-4 h-100" Elevation="2">
-                        <MudText Typo="Typo.h6">Premium meal plan</MudText>
-                        <MudNumericField T="int" Label="Days" @bind-Value="mealPlanDays" Min="1" Max="14" Class="mt-3" />
-                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" Class="mt-3" FullWidth="true"
-                                   OnClick="GenerateMealPlan" Disabled="@(!CanUsePremium || isLoadingMealPlan)">
-                            Generate meal plan
-                        </MudButton>
-                        @if (!CanUsePremium)
-                        {
-                            <MudAlert Severity="Severity.Info" Class="mt-3">Premium users only. Open the subscription page to verify
-                                your plan.</MudAlert>
-                            }
-                            @if (mealPlan != null)
-                            {
-                                <MudDivider Class="my-4" />
-                                <MudText Typo="Typo.subtitle1"><b>@mealPlan.Summary</b></MudText>
-                                @foreach (var day in mealPlan.Days)
-                                {
-                                    <MudText Typo="Typo.body2" Class="mt-2">@day.Date - @day.Title (@day.Calories kcal)</MudText>
-                                }
-                            }
-                        </MudCard>
-                    </MudItem>
-
-                    <MudItem xs="12" md="4">
-                        <MudCard Class="pa-4 h-100" Elevation="2">
-                            <MudText Typo="Typo.h6">AI coach</MudText>
-                            <MudTextField T="string" Label="Question" @bind-Value="coachMessage" Lines="4" Class="mt-3" />
-                            <MudTextField T="string" Label="Context (optional)" @bind-Value="coachContext" Class="mt-3" />
-                            <MudButton Variant="Variant.Filled" Color="Color.Success" Class="mt-3" FullWidth="true"
-                                       OnClick="AskCoach" Disabled="@(!CanUsePremium || isLoadingCoach)">
-                                Ask coach
-                            </MudButton>
-                            @if (!CanUsePremium)
-                            {
-                                <MudAlert Severity="Severity.Info" Class="mt-3">The coach is locked to active premium subscriptions.
-                                </MudAlert>
-                            }
-                            @if (coach != null)
-                            {
-                                <MudDivider Class="my-4" />
-                                <MudText Typo="Typo.subtitle1"><b>@coach.Answer</b></MudText>
-                                <MudStack Spacing="1" Class="mt-2">
-                                    @foreach (var tip in coach.Tips)
-                                    {
-                                        <MudText Typo="Typo.body2">• @tip</MudText>
-                                    }
-                                </MudStack>
-                            }
-                        </MudCard>
-                    </MudItem>
-                </MudGrid>
-
+        <MudItem xs="12" md="4">
+            <MudCard Class="pa-4 h-100" Elevation="2">
+                <MudText Typo="Typo.h6">Premium meal plan</MudText>
+                <MudNumericField T="int" Label="Days" @bind-Value="mealPlanDays" Min="1" Max="14" Class="mt-3" Disabled="@(!CanUsePremium)" />
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary" Class="mt-3" FullWidth="true" OnClick="GenerateMealPlan" Disabled="@(!CanUsePremium || isLoadingMealPlan)">
+                    Generate meal plan
+                </MudButton>
                 @if (!CanUsePremium)
                 {
-                    <MudPaper Class="pa-6 mt-6 d-flex align-center justify-space-between" Elevation="3"
-                              Style="background-color: var(--mud-palette-tertiary-lighten); border-left: 6px solid var(--mud-palette-tertiary);">
-                        <div>
-                            <MudText Typo="Typo.h6">Unlock the full power of Nutrition AI</MudText>
-                            <MudText Typo="Typo.body2">Get personalized meal plans and 24/7 AI coaching by upgrading to Premium.
-                            </MudText>
-                        </div>
-                        <MudButton Variant="Variant.Filled" Color="Color.Tertiary" Size="Size.Large"
-                                   StartIcon="@Icons.Material.Filled.Bolt" OnClick="HandleUpgrade">
-                            Upgrade Now
-                        </MudButton>
-                    </MudPaper>
+                    <MudAlert Severity="Severity.Info" Class="mt-3">Premium users only. Open the subscription page to verify your plan.</MudAlert>
                 }
-            </MudContainer>
+                @if (mealPlan != null)
+                {
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.subtitle1"><b>@mealPlan.Summary</b></MudText>
+                    @foreach (var day in mealPlan.Days)
+                    {
+                        <MudText Typo="Typo.body2" Class="mt-2">@day.Date - @day.Title (@day.Calories kcal)</MudText>
+                    }
+                }
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudCard Class="pa-4 h-100" Elevation="2">
+                <MudText Typo="Typo.h6">AI coach</MudText>
+                <MudTextField T="string" Label="Question" @bind-Value="coachMessage" Lines="4" Class="mt-3" Disabled="@(!CanUsePremium)" />
+                <MudTextField T="string" Label="Context (optional)" @bind-Value="coachContext" Class="mt-3" Disabled="@(!CanUsePremium)" />
+                <MudButton Variant="Variant.Filled" Color="Color.Success" Class="mt-3" FullWidth="true" OnClick="AskCoach" Disabled="@(!CanUsePremium || isLoadingCoach)">
+                    Ask coach
+                </MudButton>
+                @if (!CanUsePremium)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-3">The coach is locked to active premium subscriptions.</MudAlert>
+                }
+                @if (coach != null)
+                {
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.subtitle1"><b>@coach.Answer</b></MudText>
+                    <MudStack Spacing="1" Class="mt-2">
+                        @foreach (var tip in coach.Tips)
+                        {
+                            <MudText Typo="Typo.body2">• @tip</MudText>
+                        }
+                    </MudStack>
+                }
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    @if (!CanUsePremium)
+    {
+        <MudPaper Class="pa-6 mt-6 d-flex align-center justify-space-between" Elevation="3" Style="background-color: var(--mud-palette-tertiary-lighten); border-left: 6px solid var(--mud-palette-tertiary);">
+            <div>
+                <MudText Typo="Typo.h6">Unlock the full power of Nutrition AI</MudText>
+                <MudText Typo="Typo.body2">Get personalized meal plans and 24/7 AI coaching by upgrading to Premium.</MudText>
+            </div>
+            <MudButton Variant="Variant.Filled" Color="Color.Tertiary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Bolt" OnClick="HandleUpgrade">
+                Upgrade Now
+            </MudButton>
+        </MudPaper>
+    }
+</MudContainer>
 
 @code {
     private SubscriptionModel? subscription;
@@ -138,10 +126,10 @@
     private AiMealPlanResponseModel? mealPlan;
     private AiCoachResponseModel? coach;
 
+    // Aici doar verificăm statusul și planul. Webhook-ul se ocupă să treacă statusul în "Inactive" când trebuie.
     private bool CanUsePremium => subscription != null
         && string.Equals(subscription.Plan, "Premium", StringComparison.OrdinalIgnoreCase)
-        && string.Equals(subscription.Status, "Active", StringComparison.OrdinalIgnoreCase)
-        && subscription.ExpiresAt > DateTime.UtcNow;
+        && string.Equals(subscription.Status, "Active", StringComparison.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
@@ -183,8 +171,7 @@
         isLoadingRecommendations = true;
         try
         {
-            var response = await Http.PostAsJsonAsync("api/ai/recommend-recipes", new
-AiRecommendationRequestModel(recommendationLimit));
+            var response = await Http.PostAsJsonAsync("api/ai/recommend-recipes", new AiRecommendationRequestModel(recommendationLimit));
             if (response.IsSuccessStatusCode)
             {
                 var payload = await response.Content.ReadFromJsonAsync<AiRecommendationResponseModel>();
@@ -204,6 +191,10 @@ AiRecommendationRequestModel(recommendationLimit));
             {
                 mealPlan = await response.Content.ReadFromJsonAsync<AiMealPlanResponseModel>();
             }
+            else
+            {
+                Snackbar.Add("Feature restricted or an error occurred.", Severity.Error);
+            }
         }
         finally { isLoadingMealPlan = false; }
     }
@@ -217,6 +208,10 @@ AiRecommendationRequestModel(recommendationLimit));
             if (response.IsSuccessStatusCode)
             {
                 coach = await response.Content.ReadFromJsonAsync<AiCoachResponseModel>();
+            }
+            else
+            {
+                Snackbar.Add("Feature restricted or an error occurred.", Severity.Error);
             }
         }
         finally { isLoadingCoach = false; }

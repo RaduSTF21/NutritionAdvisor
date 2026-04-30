@@ -30,22 +30,35 @@ public class StripePaymentService : IPaymentService
                     {
                         UnitAmount = 4900, // 49.00 RON
                         Currency = "ron",
+                        Recurring = new SessionLineItemPriceDataRecurringOptions
+                        {
+                            Interval = "month" // <--- TRANSFORMA PLATA ÎN ABONAMENT
+                        },
                         ProductData = new SessionLineItemPriceDataProductDataOptions
                         {
-                            Name = "Nutrition Advisor Premium - Abonament Lunar",
-                            Description = "Acces complet la AI Coach, planuri de mese și analize avansate."
+                            Name = "Nutrition Advisor Premium",
+                            Description = "Abonament Lunar - Acces complet la AI Coach și planuri de mese."
                         },
                     },
                     Quantity = 1,
                 },
             },
-            Mode = "payment",
+            Mode = "subscription", // <--- SETARE MOD ABONAMENT
             SuccessUrl = domain + "/payment-success",
-            CancelUrl = domain + "/profil",
+            CancelUrl = domain + "/subscription",
             CustomerEmail = userEmail,
+
+            // Această secțiune copiază Metadata și pe obiectul de abonament generat
+            SubscriptionData = new SessionSubscriptionDataOptions
+            {
+                Metadata = new Dictionary<string, string>
+                {
+                    { "userId", userId }
+                }
+            },
             Metadata = new Dictionary<string, string>
             {
-                { "userId", userId } // Important pentru Webhook!
+                { "userId", userId }
             }
         };
 

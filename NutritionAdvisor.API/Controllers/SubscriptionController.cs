@@ -12,7 +12,6 @@ public class SubscriptionController : ControllerBase
 {
     private readonly IUserRepository _userRepository;
 
-    // Injectăm Repository-ul pentru a citi direct din baza de date
     public SubscriptionController(IUserRepository userRepository)
     {
         _userRepository = userRepository;
@@ -28,7 +27,6 @@ public class SubscriptionController : ControllerBase
             return Unauthorized();
         }
 
-        // Citim statusul proaspăt și real din baza de date!
         var dbUser = await _userRepository.GetByIdAsync(userId);
 
         if (dbUser == null)
@@ -36,13 +34,13 @@ public class SubscriptionController : ControllerBase
             return NotFound("Utilizatorul nu a fost găsit în baza de date.");
         }
 
-        // Extragem valorile actualizate. Dacă ai o altă proprietate pentru ExpiresAt în Domain/Entities/User, o poți adăuga aici
         return Ok(new
         {
             UserId = dbUser.UserId,
             Plan = dbUser.SubscriptionPlan.ToString(),
-            Status = dbUser.SubscriptionStatus.ToString()
-            // Dacă ai data de expirare în DB, adaug-o aici: ExpiresAt = dbUser.SubscriptionExpiresAt
+            Status = dbUser.SubscriptionStatus.ToString(),
+            ExpiresAt = dbUser.SubscriptionEndAt, // Trimitem noul câmp
+            AutoRenew = dbUser.AutoRenew // Trimitem noul câmp
         });
     }
 }
