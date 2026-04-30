@@ -97,5 +97,21 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Allergy>()
             .HasIndex(a => new { a.UserId, a.AllergenName })
             .IsUnique();
+
+        modelBuilder.Entity<User>()
+            .Property(u => u.SubscriptionPlan)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<User>()
+            .Property(u => u.SubscriptionStatus)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.Email)
+            .IsUnique();
+
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.ProviderSubscriptionId)
+            .IsUnique();
     }
 }

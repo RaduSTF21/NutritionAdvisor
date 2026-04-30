@@ -43,12 +43,19 @@ public class AuthController : ControllerBase
         {
             var result = await _mediator.Send(command);
 
-            var claims = new[]
+            var claims = new List<Claim>
             {
-                new Claim(ClaimTypes.NameIdentifier, result.UserId.ToString()),
-                new Claim(ClaimTypes.Name, result.Name),
-                new Claim(ClaimTypes.Email, result.Email)
+                new(ClaimTypes.NameIdentifier, result.UserId.ToString()),
+                new(ClaimTypes.Name, result.Name),
+                new(ClaimTypes.Email, result.Email),
+                new("subscription_plan", result.SubscriptionPlan.ToString()),
+                new("subscription_status", result.SubscriptionStatus.ToString())
             };
+
+            if (result.SubscriptionEndAt.HasValue)
+            {
+                claims.Add(new Claim("subscription_expires_at", result.SubscriptionEndAt.Value.ToString("O")));
+            }
 
             var key = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));

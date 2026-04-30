@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NutritionAdvisor.Applicatio
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NutritionAdvisor.Infrastructure", "NutritionAdvisor.Infrastructure\NutritionAdvisor.Infrastructure.csproj", "{523F8F58-E9D8-4FCA-8497-A7930D65490C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NutritionAdvisor.Tests", "NutritionAdvisor.Tests\NutritionAdvisor.Tests.csproj", "{D9F77F2A-51DE-4A45-9D0D-8AF1F3C6A5C2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -38,6 +40,10 @@ Global
 		{523F8F58-E9D8-4FCA-8497-A7930D65490C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{523F8F58-E9D8-4FCA-8497-A7930D65490C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{523F8F58-E9D8-4FCA-8497-A7930D65490C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D9F77F2A-51DE-4A45-9D0D-8AF1F3C6A5C2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D9F77F2A-51DE-4A45-9D0D-8AF1F3C6A5C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D9F77F2A-51DE-4A45-9D0D-8AF1F3C6A5C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D9F77F2A-51DE-4A45-9D0D-8AF1F3C6A5C2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -19,6 +19,12 @@ public class LoginUserCommandHandler : IRequestHandler<LoginUserCommand, LoginUs
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             throw new Exception("Invalid email or password.");
 
-        return new LoginUserResult(user.UserId, user.Name, user.Email);
+        return new LoginUserResult(
+            user.UserId,
+            user.Name,
+            user.Email,
+            user.SubscriptionPlan,
+            user.SubscriptionStatus,
+            user.SubscriptionEndAt);
     }
 }
