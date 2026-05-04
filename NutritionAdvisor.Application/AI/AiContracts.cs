@@ -1,59 +1,46 @@
-using System.Text.Json.Serialization;
-using NutritionAdvisor.Domain.Enums;
-
 namespace NutritionAdvisor.Application.AI;
 
-public sealed record AiRecommendationRequestDto
-{
-    public int Limit { get; init; } = 5;
-}
+// DTO pentru a trimite rețetele noastre din DB către Python
+public record AiRecipeDto(
+    Guid Id,
+    string Title,
+    string Description,
+    List<string> Ingredients,
+    int Calories,
+    int CookingTimeInMinutes,
+    string Goal);
 
-public sealed record AiMealPlanRequestDto
-{
-    public int Days { get; init; } = 7;
-}
+// Request-urile către Python
+public record AiRecommendationRequestModel(
+    string UserId,
+    string? Objective,
+    List<string> Allergies,
+    List<string> DislikedIngredients,
+    int Limit,
+    List<AiRecipeDto> AvailableRecipes);
 
-public sealed record AiCoachRequestDto
-{
-    public string Message { get; init; } = string.Empty;
+public record AiMealPlanRequestModel(
+    string UserId,
+    string? Objective,
+    int Days,
+    List<string> Allergies,
+    List<string> DislikedIngredients,
+    List<AiRecipeDto> AvailableRecipes);
 
-    public string? Context { get; init; }
-}
+public record AiCoachRequestModel(
+    string UserId,
+    string? Objective,
+    string Message,
+    string? Context,
+    List<string> Allergies,
+    List<string> DislikedIngredients);
 
-public sealed record AiContextDto(
-    [property: JsonPropertyName("user_id")] Guid UserId,
-    [property: JsonPropertyName("objective")] string? Objective,
-    [property: JsonPropertyName("allergies")] IReadOnlyList<string> Allergies,
-    [property: JsonPropertyName("disliked_ingredients")] IReadOnlyList<string> DislikedIngredients);
+// Modelele de răspuns (rămân la fel pentru a fi compatibile cu Blazor)
+public record AiRecommendationResponseModel(string UserId, string Mode, List<AiRecommendationItemModel> Recommendations);
+public record AiRecommendationItemModel(string Id, string Title, string Description, List<string> Ingredients, string Reason, bool Premium, int CookingTimeInMinutes);
 
-public sealed record AiRecommendationItemDto(
-    [property: JsonPropertyName("id")] string Id,
-    [property: JsonPropertyName("title")] string Title,
-    [property: JsonPropertyName("description")] string? Description,
-    [property: JsonPropertyName("ingredients")] IReadOnlyList<string> Ingredients,
-    [property: JsonPropertyName("reason")] string Reason,
-    [property: JsonPropertyName("premium")] bool Premium,
-    [property: JsonPropertyName("cooking_time_in_minutes")] int CookingTimeInMinutes);
+public record AiMealPlanResponseModel(string UserId, string Mode, string Summary, List<AiMealPlanDayModel> Days);
+public record AiMealPlanDayModel(string Date, string Title, string Description, int Calories, List<AiMealPlanMealModel> Items);
+public record AiMealPlanMealModel(string MealType, Guid RecipeId, string Title, int Calories);
 
-public sealed record AiRecommendationResponseDto(
-    Guid UserId,
-    string Mode,
-    IReadOnlyList<AiRecommendationItemDto> Recommendations);
-
-public sealed record AiMealPlanDayDto(
-    [property: JsonPropertyName("date")] string Date,
-    [property: JsonPropertyName("title")] string Title,
-    [property: JsonPropertyName("description")] string Description,
-    [property: JsonPropertyName("calories")] int Calories);
-
-public sealed record AiMealPlanResponseDto(
-    Guid UserId,
-    string Mode,
-    string Summary,
-    IReadOnlyList<AiMealPlanDayDto> Days);
-
-public sealed record AiCoachResponseDto(
-    Guid UserId,
-    string Mode,
-    string Answer,
-    IReadOnlyList<string> Tips);
+public record AiCoachResponseModel(string UserId, string Mode, string Answer, List<string> Tips);

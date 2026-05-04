@@ -14,17 +14,14 @@ services:
     build:
       context: .
       dockerfile: NutritionAdvisor.API/Dockerfile
+    env_file:
+      - .env
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__DefaultConnection: Host=postgres;Database=nutrition_db;Username=nutrition_user;Password=nutrition_pass
-      Jwt__Key: CHANGE_ME_TO_A_SECURE_KEY_WITH_AT_LEAST_32_CHARS
-      Jwt__Issuer: NutritionAdvisor
-      Jwt__Audience: NutritionAdvisorUsers
-      PythonAI__BaseUrl: http://ai_service:8000
-      Stripe__SecretKey: sk_test_PUNE_CHEIA_AICI_IN_LOCAL
-      Stripe__WebhookSecret: sk_test_PUNE_CHEIA_AICI_IN_LOCAL
-      Stripe__Domain: http://localhost:5210
+      # The following values are expected to be provided via .env (see .env.example)
+      # ConnectionStrings__DefaultConnection, Jwt__Key, Jwt__Issuer, Jwt__Audience,
+      # PythonAI__BaseUrl, Stripe__SecretKey, Stripe__WebhookSecret, Stripe__Domain
     ports:
       - "5066:8080"
     volumes:
@@ -39,11 +36,16 @@ services:
       dockerfile: Frontend/Dockerfile
     ports:
       - "5210:80"
-    
+
   ai_service:
     build:
       context: NutritionAdvisor.AI
       dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      # The GEMINI_API_KEY should be set in the .env file (not committed).
+      - GEMINI_API_KEY
     ports:
       - "8000:8000"
 

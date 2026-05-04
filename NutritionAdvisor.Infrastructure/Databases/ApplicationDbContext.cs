@@ -15,6 +15,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<RecipeIngredient> RecipeIngredients { get; set; }
     public DbSet<DailyLog> DailyLogs { get; set; }
     public DbSet<Meal> Meals { get; set; }
+    public DbSet<MealPlan> MealPlans { get; set; }
+    public DbSet<MealPlanItem> MealPlanItems { get; set; }
     public DbSet<FoodPreference> FoodPreferences { get; set; }
     public DbSet<Allergy> Allergies { get; set; }
 
@@ -63,6 +65,25 @@ public class ApplicationDbContext : DbContext
             .HasOne(m => m.Recipe)
             .WithMany(r => r.Meals)
             .HasForeignKey(m => m.RecipeId);
+
+        modelBuilder.Entity<MealPlan>()
+            .HasIndex(plan => new { plan.UserId, plan.Date })
+            .IsUnique();
+
+        modelBuilder.Entity<MealPlan>()
+            .HasMany(plan => plan.Items)
+            .WithOne(item => item.MealPlan)
+            .HasForeignKey(item => item.MealPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MealPlanItem>()
+            .Property(item => item.MealType)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<MealPlanItem>()
+            .HasOne(item => item.Recipe)
+            .WithMany()
+            .HasForeignKey(item => item.RecipeId);
 
         modelBuilder.Entity<FoodPreference>()
             .Property(fp => fp.DietType)

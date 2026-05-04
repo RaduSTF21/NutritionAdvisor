@@ -80,6 +80,7 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRecipeRepository, RecipeRepository>();
 builder.Services.AddScoped<IIngredientRepository, IngredientRepository>();
 builder.Services.AddScoped<IDailyLogRepository, DailyLogRepository>();
+builder.Services.AddScoped<IMealPlanRepository, MealPlanRepository>();
 builder.Services.AddScoped<IFoodPreferenceRepository, FoodPreferenceRepository>();
 builder.Services.AddScoped<IAllergyRepository, AllergyRepository>();
 builder.Services.AddScoped<IPaymentService, StripePaymentService>();

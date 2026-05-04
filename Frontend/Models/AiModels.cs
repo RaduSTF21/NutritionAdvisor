@@ -26,6 +26,13 @@ public sealed record AiMealPlanDayModel(
     [property: JsonPropertyName("date")] string Date,
     [property: JsonPropertyName("title")] string Title,
     [property: JsonPropertyName("description")] string Description,
+    [property: JsonPropertyName("calories")] int Calories,
+    [property: JsonPropertyName("items")] IReadOnlyList<AiMealPlanMealModel> Items);
+
+public sealed record AiMealPlanMealModel(
+    [property: JsonPropertyName("mealType")] string MealType,
+    [property: JsonPropertyName("recipeId")] Guid RecipeId,
+    [property: JsonPropertyName("title")] string Title,
     [property: JsonPropertyName("calories")] int Calories);
 
 public sealed record AiMealPlanResponseModel(
