@@ -9,6 +9,7 @@
 @inject HttpClient Http
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
     <MudPaper Class="pa-6 mb-6 meal-plan-hero" Elevation="3">
@@ -25,7 +26,8 @@
                     <MudPaper Class="pa-5" Elevation="0">
                         <MudText Typo="Typo.h6" Class="mb-4">Generate with AI</MudText>
 
-                        <MudNumericField T="int" Label="Days" @bind-Value="aiDays" Min="1" Max="14" Class="mb-3" />
+                        <MudNumericField Id="ai-days" T="int" Label="Days" @bind-Value="aiDays" Min="1" Max="14"
+                                         Class="mb-3" />
 
                         <MudButton Variant="Variant.Filled" Color="Color.Secondary" FullWidth="true"
                                    OnClick="GenerateAIMealPlan" Disabled="@(isGeneratingAI || aiGeneratedPlan != null)">
@@ -45,7 +47,8 @@
                         {
                             <MudAlert Severity="Severity.Success" Class="mt-4">Plan generated successfully!</MudAlert>
 
-                            <MudDatePicker Label="Select Date" @bind-Date="aiPlanDate" Class="mt-3 mb-3" />
+                            <MudDatePicker Id="ai-plan-date" Label="Select Date" @bind-Date="aiPlanDate"
+                                           Class="mt-3 mb-3" />
 
                             <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
                                        OnClick="SaveAIMealPlan" Disabled="@(isSavingAI || !aiPlanDate.HasValue)">
@@ -74,11 +77,12 @@
                     <MudPaper Class="pa-5" Elevation="0">
                         <MudText Typo="Typo.h6" Class="mb-4">Create Manually</MudText>
 
-                        <MudDatePicker id="plan-date" Label="Date" @bind-Date="selectedDate" Class="mb-3" />
-                        <MudNumericField T="int" id="plan-target-calories" Label="Target Calories"
+                        <MudDatePicker Id="plan-date" Label="Date" @bind-Date="selectedDate" Class="mb-3" />
+                        <MudNumericField Id="plan-target-calories" T="int" Label="Target Calories"
                                          @bind-Value="targetCalories" Min="800" Max="5000" Class="mb-3" />
 
-                        <MudSelect T="Guid?" Label="Breakfast" @bind-Value="breakfastRecipeId" Class="mb-3">
+                        <MudSelect Id="breakfast-select" T="Guid?" Label="Breakfast" @bind-Value="breakfastRecipeId"
+                                   Class="mb-3">
                             <MudSelectItem T="Guid?" Value="null">Select breakfast</MudSelectItem>
                             @foreach (var recipe in recipes)
                             {
@@ -86,7 +90,7 @@
                             }
                         </MudSelect>
 
-                        <MudSelect T="Guid?" Label="Lunch" @bind-Value="lunchRecipeId" Class="mb-3">
+                        <MudSelect Id="lunch-select" T="Guid?" Label="Lunch" @bind-Value="lunchRecipeId" Class="mb-3">
                             <MudSelectItem T="Guid?" Value="null">Select lunch</MudSelectItem>
                             @foreach (var recipe in recipes)
                             {
@@ -94,7 +98,8 @@
                             }
                         </MudSelect>
 
-                        <MudSelect T="Guid?" Label="Dinner" @bind-Value="dinnerRecipeId" Class="mb-3">
+                        <MudSelect Id="dinner-select" T="Guid?" Label="Dinner" @bind-Value="dinnerRecipeId"
+                                   Class="mb-3">
                             <MudSelectItem T="Guid?" Value="null">Select dinner</MudSelectItem>
                             @foreach (var recipe in recipes)
                             {
@@ -141,9 +146,19 @@
                                         <MudText Typo="Typo.body2">Target: @plan.TargetCalories kcal | Actual:
                                             @plan.TotalCalories kcal</MudText>
                                         </div>
-                                        <MudChip T="string" Color="@(plan.IsAIGenerated? Color.Secondary: Color.Info)">
-                                            @(plan.IsAIGenerated ? "AI generated" : "Manual")
-                                        </MudChip>
+                                        <div class="d-flex gap-2">
+                                            <MudChip T="string" Color="@(plan.IsAIGenerated? Color.Secondary: Color.Info)">
+                                                @(plan.IsAIGenerated ? "AI generated" : "Manual")
+                                            </MudChip>
+                                            <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                                                       OnClick="@(() => OpenDeleteSavedPlanDialog(plan.Id, plan.Date))">
+                                                <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" />
+                                            </MudButton>
+                                            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" Class="ms-1"
+                                                       OnClick="@(() => DeleteSavedPlanDirect(plan.Id, plan.Date))">
+                                                <MudText Typo="Typo.caption">Delete now</MudText>
+                                            </MudButton>
+                                        </div>
                                     </div>
 
                                     <MudDivider Class="my-3" />
@@ -221,7 +236,7 @@
                                         <MudText Typo="Typo.caption">@day.Description</MudText>
                                     </div>
                                     <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
-                                               OnClick="@((e) => OpenDeleteDayDialog(day.Date))">
+                                               OnClick="@(() => OpenDeleteDayDialog(day.Date))">
                                         <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" />
                                     </MudButton>
                                 </div>
@@ -262,7 +277,7 @@
     </MudContainer>
 
     <!-- Delete Day Dialog -->
-    <MudDialog @bind-IsOpen="isDeleteDayDialogOpen">
+    <MudDialog @bind-Open="isDeleteDayDialogOpen">
         <TitleContent>
             <MudText Typo="Typo.h6">Delete Day</MudText>
         </TitleContent>
@@ -270,14 +285,33 @@
             <MudText>What would you like to delete?</MudText>
         </DialogContent>
         <DialogActions>
-            <MudButton OnClick="@((e) => isDeleteDayDialogOpen = false)" Color="Color.Default">
+            <MudButton OnClick="@(() => isDeleteDayDialogOpen = false)" Color="Color.Default">
                 Cancel
             </MudButton>
-            <MudButton OnClick="@((e) => DeleteThisDay())" Color="Color.Error">
+            <MudButton OnClick="DeleteThisDay" Color="Color.Error">
                 Delete This Day Only
             </MudButton>
-            <MudButton OnClick="@((e) => ClearAIPlan())" Color="Color.Warning" Variant="Variant.Filled">
+            <MudButton OnClick="@(() => ClearAIPlan())" Color="Color.Warning" Variant="Variant.Filled">
                 Delete Entire Plan
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    <!-- Delete Saved Plan Dialog -->
+    <MudDialog @bind-Open="isDeleteSavedPlanDialogOpen">
+        <TitleContent>
+            <MudText Typo="Typo.h6">Delete Saved Plan</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudText>Are you sure you want to delete the meal plan for <b>@savedPlanDateToDelete?.ToString("dd MMM yyyy")</b>?</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Error" Class="mt-3">This action cannot be undone.</MudText>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => isDeleteSavedPlanDialogOpen = false)" Color="Color.Default">
+                Cancel
+            </MudButton>
+            <MudButton OnClick="DeleteSavedPlan" Color="Color.Error" Variant="Variant.Filled">
+                Delete Plan
             </MudButton>
         </DialogActions>
     </MudDialog>
@@ -304,6 +338,11 @@
     // Delete Dialog
     private bool isDeleteDayDialogOpen;
     private string? deleteDayDate;
+    
+    // Delete Saved Plan Dialog
+    private bool isDeleteSavedPlanDialogOpen;
+    private Guid? deleteSavedPlanId;
+    private DateTime? savedPlanDateToDelete;
 
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -451,6 +490,7 @@
     {
         deleteDayDate = dayDate;
         isDeleteDayDialogOpen = true;
+        Snackbar.Add($"OpenDeleteDayDialog called for {dayDate}", Severity.Info);
     }
 
     private void DeleteThisDay()
@@ -464,8 +504,57 @@
 
         isDeleteDayDialogOpen = false;
         deleteDayDate = null;
+        StateHasChanged();
         Snackbar.Add($"Day deleted. You can still modify and save the remaining days.",
         Severity.Info);
+    }
+
+    private async Task OpenDeleteSavedPlanDialog(Guid planId, DateTime planDate)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Delete Saved Plan",
+            $"Are you sure you want to delete the meal plan for {planDate:dd MMM yyyy}?",
+            yesText: "Delete",
+            cancelText: "Cancel",
+            noText: null
+        );
+
+        if (confirmed == true)
+        {
+            deleteSavedPlanId = planId;
+            await DeleteSavedPlan();
+        }
+    }
+
+    private async Task DeleteSavedPlan()
+    {
+        Snackbar.Add($"DeleteSavedPlan invoked for {deleteSavedPlanId}", Severity.Info);
+        if (!deleteSavedPlanId.HasValue)
+            return;
+
+        try
+        {
+            var response = await Http.DeleteAsync($"api/mealplans/{deleteSavedPlanId.Value}");
+            Snackbar.Add($"DELETE /api/mealplans returned {(int)response.StatusCode} {response.ReasonPhrase}", Severity.Info);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"Meal plan for {savedPlanDateToDelete?.ToString("dd MMM yyyy")} deleted successfully.", Severity.Success);
+                isDeleteSavedPlanDialogOpen = false;
+                deleteSavedPlanId = null;
+                savedPlanDateToDelete = null;
+                await LoadMealPlans();
+                StateHasChanged();
+            }
+            else
+            {
+                var errorText = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Delete failed: {(int)response.StatusCode} {response.ReasonPhrase} - {errorText}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting plan: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task CreateMealPlan()
@@ -528,6 +617,31 @@
             }
         }
         finally { isSubmitting = false; }
+    }
+
+    private async Task DeleteSavedPlanDirect(Guid planId, DateTime planDate)
+    {
+        Snackbar.Add($"DeleteSavedPlanDirect invoked for {planId}", Severity.Info);
+        try
+        {
+            var response = await Http.DeleteAsync($"api/mealplans/{planId}");
+            Snackbar.Add($"Direct DELETE returned {(int)response.StatusCode} {response.ReasonPhrase}", Severity.Info);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"Meal plan for {planDate:dd MMM yyyy} deleted (direct).", Severity.Success);
+                await LoadMealPlans();
+                StateHasChanged();
+            }
+            else
+            {
+                var errorText = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Direct delete failed: {(int)response.StatusCode} {response.ReasonPhrase} - {errorText}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error in direct delete: {ex.Message}", Severity.Error);
+        }
     }
 
     private class SaveMealPlanRequest

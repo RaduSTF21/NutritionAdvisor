@@ -45,7 +45,8 @@ services:
       - .env
     environment:
       # The GEMINI_API_KEY should be set in the .env file (not committed).
-      - GEMINI_API_KEY
+      - GEMINI_API_KEYS=${GEMINI_API_KEYS}
+      - GEMINI_MODEL=${GEMINI_MODEL}
     ports:
       - "8000:8000"
 
