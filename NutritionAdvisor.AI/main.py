@@ -501,7 +501,7 @@ def _normalize_meal_plan_item(item: Any) -> Dict[str, Any]:
         "calories": int(item.get("calories", 500) or 500),
         "protein": int(item.get("protein", 25) or 25),
         "carbs": int(item.get("carbs", 60) or 60),
-        "fats": int(item.get("fats", 15) or 15),
+        "fats": int(item.get("fats", 15) or 15)
     }
 
 
