@@ -39,20 +39,37 @@ public class CreateMealPlanCommandHandler : IRequestHandler<CreateMealPlanComman
 
         foreach (var item in request.Items)
         {
-            var recipe = await _recipeRepository.GetByIdAsync(item.RecipeId, cancellationToken);
-            if (recipe == null)
-            {
-                throw new InvalidOperationException($"Recipe {item.RecipeId} was not found.");
-            }
-
-            mealPlan.Items.Add(new MealPlanItem
+            var planItem = new MealPlanItem
             {
                 MealType = item.MealType,
-                RecipeId = recipe.Id,
-                Recipe = recipe
-            });
+                Calories = item.Calories,
+                Protein = item.Protein,
+                Carbs = item.Carbs,
+                Fats = item.Fats
+            };
 
-            mealPlan.TotalCalories += (int)Math.Round(recipe.TotalCalories);
+            if (item.RecipeId.HasValue && item.RecipeId != Guid.Empty)
+            {
+                var recipe = await _recipeRepository.GetByIdAsync(item.RecipeId.Value, cancellationToken);
+                if (recipe == null)
+                {
+                    throw new InvalidOperationException($"Recipe {item.RecipeId} was not found.");
+                }
+
+                planItem.RecipeId = recipe.Id;
+                planItem.Recipe = recipe;
+
+                // Fallback dacă AI-ul sau frontend-ul nu trimit calorii valide
+                if (planItem.Calories == 0) planItem.Calories = recipe.TotalCalories;
+            }
+            else
+            {
+                planItem.ExternalTitle = item.ExternalTitle;
+                planItem.ExternalUrl = item.ExternalUrl;
+            }
+
+            mealPlan.Items.Add(planItem);
+            mealPlan.TotalCalories += (int)Math.Round(planItem.Calories);
         }
 
         await _mealPlanRepository.AddAsync(mealPlan, cancellationToken);
