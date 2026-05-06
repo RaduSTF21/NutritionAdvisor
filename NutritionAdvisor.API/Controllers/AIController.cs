@@ -89,14 +89,19 @@ public class AIController : ControllerBase
 
         var userId = Guid.Parse(userIdString);
         var context = await GetUserContextAsync(userId);
+        var objective = string.IsNullOrWhiteSpace(request.SearchQuery)
+            ? context.Objective
+            : request.SearchQuery.Trim();
 
         var aiRequest = new AiRecommendationRequestModel(
             userId.ToString(),
-            context.Objective,
+            objective,
             context.Allergies,
             context.Disliked,
             request.Limit,
-            context.Recipes
+            context.Recipes,
+            request.SearchQuery,
+            request.UseInternetSearch
         );
 
         var result = await _aiService.GetRecommendationsAsync(aiRequest);
@@ -157,6 +162,6 @@ public class AIController : ControllerBase
 }
 
 // Modele pentru request-urile venite din Frontend (Blazor)[cite: 2]
-public record FrontendRecommendationRequest(int Limit);
+public record FrontendRecommendationRequest(int Limit, string? SearchQuery = null, bool UseInternetSearch = false);
 public record FrontendMealPlanRequest(int Days);
 public record FrontendCoachRequest(string Message, string? Context);

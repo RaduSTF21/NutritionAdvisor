@@ -1,7 +1,9 @@
 import os
 import json
 import re
+import uuid
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 from typing import List, Optional, Dict, Any, Union
 
 # --- IMPORT GUARD ---
@@ -51,6 +53,8 @@ class BaseAiModel(BaseModel):
 class UserProfileAI(BaseAiModel):
     user_id: str
     objective: Optional[str] = None
+    search_query: Optional[str] = None
+    use_internet_search: bool = False
     allergies: List[str] = []
     disliked_ingredients: List[str] = []
     limit: int = 5
@@ -76,6 +80,16 @@ class CoachRequest(BaseAiModel):
 # --- HELPERS ---
 def _normalize_text(value: Optional[str]) -> str:
     return (value or "").strip().lower()
+
+
+def _is_guid_string(value: Any) -> bool:
+    if not value:
+        return False
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 
 def _stable_json(value: Any) -> str:
@@ -177,7 +191,7 @@ def _fallback_recommendations(request: UserProfileAI) -> Dict[str, Any]:
         for r in ranked[: max(1, request.limit)]
     ]
     if len(recommendations) < max(1, request.limit):
-        ext_results = _cached_search_themealdb(request.objective or "", limit=request.limit, validate_urls=True)
+        ext_results = _cached_search_themealdb(request.search_query or request.objective or "", limit=request.limit)
         for r in ext_results:
             recommendations.append({
                 "id": str(r.get("id") or "external"),
@@ -191,48 +205,6 @@ def _fallback_recommendations(request: UserProfileAI) -> Dict[str, Any]:
             })
 
     return {"mode": "gemini", "userId": request.user_id, "user_id": request.user_id, "recommendations": recommendations}
-
-
-    # --- URL VALIDATION CACHE ---
-    _URL_VALIDATION_CACHE: Dict[str, Dict[str, Any]] = {}
-    _URL_VALIDATION_CACHE_TTL = int(os.getenv("URL_VALIDATION_CACHE_TTL", "86400"))  # 24 hours
-
-    def _is_url_accessible(url: Optional[str], timeout: float = 3.0) -> bool:
-        """Check if URL is accessible (not 404, not excessive redirects)."""
-        if not url or not isinstance(url, str):
-            return False
-    
-        try:
-            url = url.strip()
-            if not url.startswith("http"):
-                return False
-        
-            # Check cache first
-            now = time.time()
-            if url in _URL_VALIDATION_CACHE:
-                cache_entry = _URL_VALIDATION_CACHE[url]
-                if now - cache_entry.get("ts", 0) < _URL_VALIDATION_CACHE_TTL:
-                    return cache_entry.get("valid", False)
-        
-            # Do HEAD request (fast, no body)
-            import requests
-            try:
-                resp = requests.head(url, timeout=timeout, allow_redirects=True, follow_redirects=True)
-                # Consider 200-299 as accessible; 404, 410 as not found; others as potentially accessible
-                is_valid = 200 <= resp.status_code < 300
-            
-                # Cache result
-                _URL_VALIDATION_CACHE[url] = {"ts": now, "valid": is_valid}
-                return is_valid
-            except requests.RequestException:
-                # Network error, timeout, etc. - consider as potentially valid (don't filter out)
-                # We only filter out confirmed 404s, not network issues
-                _URL_VALIDATION_CACHE[url] = {"ts": now, "valid": True}
-                return True
-        except Exception as e:
-            print(f"[URL Validation] Error checking {url}: {e}")
-            # On error, assume valid to not lose recipes
-            return True
 
 
 def _search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[str, Any]]:
@@ -266,6 +238,8 @@ def _search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[str, An
                 "title": m.get("strMeal"),
                 "description": (m.get("strInstructions") or "")[:400],
                 "ingredients": ingredients,
+                "sourceUrl": m.get("strSource"),
+                "youtubeUrl": m.get("strYoutube"),
                 "externalUrl": m.get("strSource") or m.get("strYoutube"),
                 "cookingTimeInMinutes": 30,
             })
@@ -278,31 +252,139 @@ def _search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[str, An
 _THEMEALDB_CACHE: Dict[str, Dict[str, Any]] = {}
 _THEMEALDB_CACHE_TTL = int(os.getenv("THEMEALDB_CACHE_TTL", "3600"))
 
-def _cached_search_themealdb(query: Optional[str], limit: int = 5, validate_urls: bool = True) -> List[Dict[str, Any]]:
+def _cached_search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[str, Any]]:
     key = f"{(query or '').strip().lower()}::{limit}"
     now = time.time()
     entry = _THEMEALDB_CACHE.get(key)
     if entry and (now - entry.get("ts", 0) < _THEMEALDB_CACHE_TTL):
-        data = entry.get("data", [])
-        # Still validate URLs even if cached (validation cache is separate)
-        if validate_urls:
-            data = [r for r in data if _is_url_accessible(r.get("externalUrl"))]
-        return data
-    
+        return entry.get("data", [])
     data = _search_themealdb(query, limit=limit)
-    
-    # Validate URLs if requested
-    if validate_urls:
-        valid_recipes = []
-        for recipe in data:
-            url = recipe.get("externalUrl")
-            # If no URL, keep it; if has URL, validate before keeping
-            if not url or _is_url_accessible(url):
-                valid_recipes.append(recipe)
-        data = valid_recipes
-    
     _THEMEALDB_CACHE[key] = {"ts": now, "data": data}
     return data
+
+
+_URL_VALIDATION_CACHE: Dict[str, Dict[str, Any]] = {}
+_URL_VALIDATION_CACHE_TTL = int(os.getenv("URL_VALIDATION_CACHE_TTL", "86400"))
+
+
+def _homepage_like_path(parsed_url: Any) -> bool:
+    path = (getattr(parsed_url, "path", "") or "").strip().lower()
+    return path in {"", "/", "/home", "/index", "/index.html"}
+
+
+def _is_url_accessible(url: Optional[str], timeout: float = 6.0) -> bool:
+    if not url or not isinstance(url, str):
+        return False
+
+    cleaned_url = url.strip()
+    if not cleaned_url.startswith(("http://", "https://")):
+        return False
+
+    now = time.time()
+    cache_entry = _URL_VALIDATION_CACHE.get(cleaned_url)
+    if cache_entry and now - cache_entry.get("ts", 0) < _URL_VALIDATION_CACHE_TTL:
+        return bool(cache_entry.get("valid", False))
+
+    try:
+        import requests
+
+        response = requests.head(cleaned_url, timeout=timeout, allow_redirects=True)
+        final_url = response.url or cleaned_url
+        final_status = response.status_code
+
+        if final_status == 405:
+            response = requests.get(cleaned_url, timeout=timeout, allow_redirects=True, stream=True)
+            final_url = response.url or cleaned_url
+            final_status = response.status_code
+
+        parsed_original = urlsplit(cleaned_url)
+        parsed_final = urlsplit(final_url)
+        redirected_to_homepage = bool(response.history) and parsed_original.netloc == parsed_final.netloc and _homepage_like_path(parsed_final) and not _homepage_like_path(parsed_original)
+        is_valid = 200 <= final_status < 300 and not redirected_to_homepage
+
+        _URL_VALIDATION_CACHE[cleaned_url] = {"ts": now, "valid": is_valid}
+        return is_valid
+    except Exception:
+        _URL_VALIDATION_CACHE[cleaned_url] = {"ts": now, "valid": False}
+        return False
+
+
+def _resolve_verified_external_recipe(recipe_title: str, objective: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    stop_words = {"the", "and", "with", "for", "a", "an", "to", "of", "in", "on", "at", "by", "easy", "quick", "healthy", "best", "simple", "recipe", "recipes", "baked", "fresh"}
+    words = [word.strip(".,()[]{}!?:;\"'" ).lower() for word in str(recipe_title).split()]
+    keywords = [word for word in words if len(word) >= 4 and word not in stop_words]
+
+    search_terms = [recipe_title]
+    if keywords:
+        search_terms.append(" ".join(keywords[:4]))
+        search_terms.extend(keywords[:6])
+    if objective:
+        search_terms.append(objective)
+
+    seen_terms = set()
+    unique_terms: List[str] = []
+    for term in search_terms:
+        cleaned_term = str(term).strip() if term is not None else ""
+        if not cleaned_term:
+            continue
+        normalized_term = cleaned_term.lower()
+        if normalized_term in seen_terms:
+            continue
+        seen_terms.add(normalized_term)
+        unique_terms.append(cleaned_term)
+
+    for term in unique_terms:
+        candidates = _cached_search_themealdb(str(term), limit=8)
+        for candidate in candidates:
+            for candidate_url in [candidate.get("externalUrl"), candidate.get("sourceUrl"), candidate.get("youtubeUrl")]:
+                if _is_url_accessible(candidate_url):
+                    return {
+                        "id": candidate.get("id"),
+                        "title": candidate.get("title") or recipe_title,
+                        "description": candidate.get("description") or "",
+                        "ingredients": candidate.get("ingredients") or [],
+                        "externalUrl": candidate_url,
+                        "cookingTimeInMinutes": candidate.get("cookingTimeInMinutes") or 30,
+                    }
+    return None
+
+
+def _enrich_meal_plan_external_urls(days: List[Dict[str, Any]], objective: Optional[str] = None) -> List[Dict[str, Any]]:
+    enriched_days: List[Dict[str, Any]] = []
+
+    for day in days:
+        if not isinstance(day, dict):
+            enriched_days.append(day)
+            continue
+
+        items = []
+        for item in day.get("items") or []:
+            if not isinstance(item, dict):
+                items.append(item)
+                continue
+
+            external_url = item.get("externalUrl")
+            if external_url and _is_url_accessible(external_url):
+                items.append(item)
+                continue
+
+            resolved = _resolve_verified_external_recipe(str(item.get("title") or item.get("mealType") or "Recipe"), objective)
+            if resolved:
+                resolved_recipe_id = resolved.get("recipeId")
+                item = {
+                    **item,
+                    "recipeId": item.get("recipeId") if _is_guid_string(item.get("recipeId")) else (_is_guid_string(resolved_recipe_id) and str(resolved_recipe_id) or None),
+                    "title": resolved.get("title") or item.get("title"),
+                    "externalUrl": resolved.get("externalUrl"),
+                }
+            else:
+                item = {**item, "externalUrl": None}
+
+            items.append(item)
+
+        enriched_days.append({**day, "items": items})
+
+    return enriched_days
 
 def _generate_meal_plan_days_with_macros(
     request: MealPlanRequest, days_count: int
@@ -330,7 +412,7 @@ def _generate_meal_plan_days_with_macros(
     ]
 
     # Fetch external recipes once for the entire plan (prefer external for diversity if few local recipes)
-    external_recipes = _cached_search_themealdb(request.objective or "", limit=12, validate_urls=True) if len(safe_recipes) < 4 else []
+    external_recipes = _cached_search_themealdb(request.objective or "", limit=12) if len(safe_recipes) < 4 else []
 
     # Track previous day's chosen recipe IDs per meal type
     prev_recipe_id_for_meal: Dict[str, Optional[str]] = {mt: None for mt in meal_types}
@@ -381,7 +463,7 @@ def _generate_meal_plan_days_with_macros(
             
             # Strategy 3: Fallback - try TheMealDB if nothing else
             if selected_recipe is None and not external_recipes:
-                ext = _cached_search_themealdb(request.objective or "", limit=5, validate_urls=True)
+                ext = _cached_search_themealdb(request.objective or "", limit=5)
                 if ext:
                     for ext_cand in ext:
                         ext_id = str(ext_cand.get("id") or "")
@@ -464,6 +546,7 @@ def _generate_meal_plan_days_with_macros(
 def _fallback_meal_plan(request: MealPlanRequest) -> Dict[str, Any]:
     days_count = max(1, min(request.days, 14))
     days = _generate_meal_plan_days_with_macros(request, days_count)
+    days = _enrich_meal_plan_external_urls(days, request.objective)
     
     return {
         "mode": "gemini",
@@ -480,6 +563,8 @@ def _fallback_coach(request: CoachRequest) -> Dict[str, Any]:
 def _compact_recommendation_payload(request: UserProfileAI) -> Dict[str, Any]:
     return {
         "objective": request.objective,
+        "searchQuery": request.search_query,
+        "useInternetSearch": request.use_internet_search,
         "allergies": request.allergies[:6],
         "dislikedIngredients": request.disliked_ingredients[:6],
         "limit": max(1, min(request.limit, 5)),
@@ -503,9 +588,9 @@ def _build_gemini_prompt(endpoint: str, payload: Dict[str, Any]) -> str:
             "Return compact JSON only. "
             f"objective={payload.get('objective')}; allergies={payload.get('allergies')}; "
             f"dislikes={payload.get('dislikedIngredients')}; limit={payload.get('limit')}; "
+            f"searchQuery={payload.get('searchQuery')}; useInternetSearch={payload.get('useInternetSearch')}; "
             f"recipes={_stable_json(payload.get('availableRecipes') or [])}. "
-            "Schema: {recommendations:[{title,description,ingredients,reason,cookingTimeInMinutes}]}."
-        )
+            "Schema: {recommendations:[{title,description,ingredients,reason,cookingTimeInMinutes,externalUrl}]}.")
     if endpoint == "meal-plan":
         return (
             "Return compact JSON only. Create a diverse meal plan with NO REPEATS in the same day across different meal types. "
@@ -563,6 +648,18 @@ def _extract_retry_seconds(exc: Exception) -> Optional[float]:
 
 # --- MULTI-KEY MANAGEMENT ---
 _KEY_EXHAUSTION_TRACKER: Dict[str, float] = {}
+_KEY_ROTATION_CURSOR = 0
+
+
+def _rotated_keys(keys: List[str]) -> List[str]:
+    global _KEY_ROTATION_CURSOR
+
+    if len(keys) <= 1:
+        return list(keys)
+
+    start_index = _KEY_ROTATION_CURSOR % len(keys)
+    _KEY_ROTATION_CURSOR = (_KEY_ROTATION_CURSOR + 1) % len(keys)
+    return keys[start_index:] + keys[:start_index]
 
 async def _genai_generate_with_retries(
     contents: str, 
@@ -577,9 +674,11 @@ async def _genai_generate_with_retries(
     model_name = str(model or GEMINI_MODEL)
     last_exc: Optional[Exception] = None
     available_keys = [k for k in GEMINI_API_KEYS if k not in _KEY_EXHAUSTION_TRACKER or time.time() - _KEY_EXHAUSTION_TRACKER[k] > 3600]
-    
+
     if not available_keys:
-        available_keys = GEMINI_API_KEYS
+        available_keys = list(GEMINI_API_KEYS)
+
+    available_keys = _rotated_keys(available_keys)
 
     for api_key in available_keys:
         local_client = genai.Client(api_key=str(api_key))
@@ -658,7 +757,7 @@ def _normalize_meal_plan_item(item: Any) -> Dict[str, Any]:
     
     return {
         "mealType": str(item.get("mealType", "Meal")),
-        "recipeId": str(item.get("recipeId")) if item.get("recipeId") else None,
+        "recipeId": str(item.get("recipeId")) if _is_guid_string(item.get("recipeId")) else None,
         "title": str(item.get("title", "Meal")),
         "externalUrl": str(item.get("externalUrl")) if item.get("externalUrl") else None,
         "calories": _safe_int(item.get("calories", 500), 500),
@@ -702,6 +801,7 @@ def _normalize_recommendation_item(item: Any) -> Dict[str, Any]:
             "protein": 25,
             "carbs": 60,
             "fats": 15,
+            "externalUrl": None,
             "ingredients": [],
         }
     
@@ -714,6 +814,7 @@ def _normalize_recommendation_item(item: Any) -> Dict[str, Any]:
         "protein": _safe_int(item.get("protein", 25), 25),
         "carbs": _safe_int(item.get("carbs", 60), 60),
         "fats": _safe_int(item.get("fats", 15), 15),
+        "externalUrl": str(item.get("externalUrl")) if item.get("externalUrl") else None,
         "ingredients": item.get("ingredients", []),
     }
 
@@ -737,6 +838,30 @@ async def recommend_recipes(request: UserProfileAI, debug: bool = Query(False)) 
     fallback = _fallback_recommendations(request)
     if genai is None or not GEMINI_API_KEYS:
         return fallback
+
+    if request.use_internet_search and (request.search_query or request.objective):
+        search_term = request.search_query or request.objective or ""
+        ext_results = _cached_search_themealdb(search_term, limit=request.limit)
+        if ext_results:
+            return {
+                "mode": "internet",
+                "userId": request.user_id,
+                "user_id": request.user_id,
+                "recommendations": [
+                    _normalize_recommendation_item({
+                        "id": r.get("id"),
+                        "title": r.get("title"),
+                        "description": r.get("description"),
+                        "ingredients": r.get("ingredients"),
+                        "reason": f"Found online for '{search_term}'.",
+                        "premium": False,
+                        "cookingTimeInMinutes": int(r.get("cookingTimeInMinutes", 30) or 30),
+                        "externalUrl": r.get("externalUrl"),
+                        "totalCalories": 500,
+                    })
+                    for r in ext_results
+                ],
+            }
 
     compact_payload = _compact_recommendation_payload(request)
     cache_key = _compact_gemini_cache_key("recommend", compact_payload)
@@ -780,7 +905,7 @@ async def recommend_recipes(request: UserProfileAI, debug: bool = Query(False)) 
     except Exception as e:
         print(f"Gemini recommend failed: {e}")
         try:
-            ext_results = _cached_search_themealdb(request.objective or "", limit=request.limit)
+            ext_results = _cached_search_themealdb(request.search_query or request.objective or "", limit=request.limit)
             if ext_results:
                 result = {
                     "mode": "gemini",
@@ -866,7 +991,7 @@ async def generate_meal_plan(request: MealPlanRequest, debug: bool = Query(False
             return fallback
         
         normalized_days = [_normalize_meal_plan_day(d) for d in days_list]
-        data["days"] = normalized_days
+        data["days"] = _enrich_meal_plan_external_urls(normalized_days, request.objective)
         
         for i, day in enumerate(data.get("days") or []):
             day["date"] = (datetime.utcnow().date() + timedelta(days=i)).isoformat()
