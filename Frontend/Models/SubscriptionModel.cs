@@ -6,5 +6,4 @@ public sealed record SubscriptionModel(
     [property: JsonPropertyName("userId")] Guid UserId,
     [property: JsonPropertyName("plan")] string Plan,
     [property: JsonPropertyName("status")] string Status,
-    [property: JsonPropertyName("expiresAt")] DateTime? ExpiresAt,
-    [property: JsonPropertyName("autoRenew")] bool AutoRenew);
+    [property: JsonPropertyName("expiresAt")] DateTime? ExpiresAt);
