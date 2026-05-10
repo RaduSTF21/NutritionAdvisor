@@ -1,0 +1,29 @@
+@page "/upgrade"
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<MudCard>
+    <MudCardContent>
+        <MudText Typo="Typo.h5">Treci la Premium</MudText>
+        <MudText>Deblochează AI Coach și planificator de mese pentru doar 49 RON/lună.</MudText>
+    </MudCardContent>
+    <MudCardActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleUpgrade">
+            Cumpără Acum
+        </MudButton>
+    </MudCardActions>
+</MudCard>
+
+@code {
+    private async Task HandleUpgrade()
+    {
+        var response = await Http.PostAsync("api/payments/create-checkout", null);
+        if (response.IsSuccessStatusCode)
+        {
+            var result = await response.Content.ReadFromJsonAsync<CheckoutResponse>();
+            Nav.NavigateTo(result.Url); // Redirecționare către Stripe
+        }
+    }
+
+    private class CheckoutResponse { public string Url { get; set; } }
+}

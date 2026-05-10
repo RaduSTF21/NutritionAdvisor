@@ -164,6 +164,81 @@ namespace NutritionAdvisor.Infrastructure.Migrations
                     b.ToTable("Meals");
                 });
 
+            modelBuilder.Entity("NutritionAdvisor.Domain.Entities.MealPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsAIGenerated")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("TargetCalories")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TotalCalories")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("MealPlans");
+                });
+
+            modelBuilder.Entity("NutritionAdvisor.Domain.Entities.MealPlanItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<float>("Calories")
+                        .HasColumnType("real");
+
+                    b.Property<float>("Carbs")
+                        .HasColumnType("real");
+
+                    b.Property<string>("ExternalTitle")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalUrl")
+                        .HasColumnType("text");
+
+                    b.Property<float>("Fats")
+                        .HasColumnType("real");
+
+                    b.Property<Guid>("MealPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MealType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<float>("Protein")
+                        .HasColumnType("real");
+
+                    b.Property<Guid?>("RecipeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MealPlanId");
+
+                    b.HasIndex("RecipeId");
+
+                    b.ToTable("MealPlanItems");
+                });
+
             modelBuilder.Entity("NutritionAdvisor.Domain.Entities.Recipe", b =>
                 {
                     b.Property<Guid>("Id")
@@ -332,6 +407,23 @@ namespace NutritionAdvisor.Infrastructure.Migrations
                     b.Navigation("Recipe");
                 });
 
+            modelBuilder.Entity("NutritionAdvisor.Domain.Entities.MealPlanItem", b =>
+                {
+                    b.HasOne("NutritionAdvisor.Domain.Entities.MealPlan", "MealPlan")
+                        .WithMany("Items")
+                        .HasForeignKey("MealPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("NutritionAdvisor.Domain.Entities.Recipe", "Recipe")
+                        .WithMany()
+                        .HasForeignKey("RecipeId");
+
+                    b.Navigation("MealPlan");
+
+                    b.Navigation("Recipe");
+                });
+
             modelBuilder.Entity("NutritionAdvisor.Domain.Entities.RecipeIngredient", b =>
                 {
                     b.HasOne("NutritionAdvisor.Domain.Entities.Ingredient", "Ingredient")
@@ -354,6 +446,11 @@ namespace NutritionAdvisor.Infrastructure.Migrations
             modelBuilder.Entity("NutritionAdvisor.Domain.Entities.DailyLog", b =>
                 {
                     b.Navigation("Meals");
+                });
+
+            modelBuilder.Entity("NutritionAdvisor.Domain.Entities.MealPlan", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("NutritionAdvisor.Domain.Entities.Recipe", b =>

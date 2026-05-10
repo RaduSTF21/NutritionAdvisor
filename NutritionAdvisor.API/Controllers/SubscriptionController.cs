@@ -1,7 +1,7 @@
-using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NutritionAdvisor.Application.Interfaces;
 
 namespace NutritionAdvisor.API.Controllers;
 
@@ -10,40 +10,37 @@ namespace NutritionAdvisor.API.Controllers;
 [Authorize]
 public class SubscriptionController : ControllerBase
 {
-    [HttpGet("me")]
-    public IActionResult GetCurrentSubscription()
+    private readonly IUserRepository _userRepository;
+
+    public SubscriptionController(IUserRepository userRepository)
     {
-        var user = ControllerContext?.HttpContext?.User;
-        if (user?.Identity == null || user.Identity?.IsAuthenticated != true)
+        _userRepository = userRepository;
+    }
+
+    [HttpGet("me")]
+    public async Task<IActionResult> GetCurrentSubscription()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
         {
             return Unauthorized();
         }
 
-        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var planClaim = user.FindFirst("subscription_plan")?.Value;
-        var statusClaim = user.FindFirst("subscription_status")?.Value;
-        var expiresAtClaim = user.FindFirst("subscription_expires_at")?.Value;
+        var dbUser = await _userRepository.GetByIdAsync(userId);
 
-        if (!Guid.TryParse(userIdClaim, out var userId) ||
-            string.IsNullOrWhiteSpace(planClaim) ||
-            string.IsNullOrWhiteSpace(statusClaim))
+        if (dbUser == null)
         {
-            return Unauthorized();
-        }
-
-        DateTime? expiresAt = null;
-        if (!string.IsNullOrWhiteSpace(expiresAtClaim) &&
-            DateTime.TryParse(expiresAtClaim, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedExpiresAt))
-        {
-            expiresAt = parsedExpiresAt;
+            return NotFound("Utilizatorul nu a fost găsit în baza de date.");
         }
 
         return Ok(new
         {
-            UserId = userId,
-            Plan = planClaim,
-            Status = statusClaim,
-            ExpiresAt = expiresAt
+            UserId = dbUser.UserId,
+            Plan = dbUser.SubscriptionPlan.ToString(),
+            Status = dbUser.SubscriptionStatus.ToString(),
+            ExpiresAt = dbUser.SubscriptionEndAt, // Trimitem noul câmp
+            AutoRenew = dbUser.AutoRenew // Trimitem noul câmp
         });
     }
 }

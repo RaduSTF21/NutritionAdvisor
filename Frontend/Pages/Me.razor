@@ -1,5 +1,6 @@
 @page "/me"
 @using MudBlazor
+@using Microsoft.AspNetCore.Components
 @using System.Net
 @using System.Net.Http.Json
 @using System.Security.Claims
@@ -107,6 +108,31 @@
 
         <MudExpansionPanel Text="Overview">
             <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="p-4 rounded-lg shadow-sm h-100" Elevation="2">
+                        <MudText Typo="Typo.h6" GutterBottom="true">Calories today</MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2">Consumed: <b>@todayCalories.ToString("F0") kcal</b> of
+                            <b>@dailyCalorieTarget.ToString("F0") kcal</b>
+                        </MudText>
+                        <MudProgressLinear Value="@TodayCalorieProgress" Color="Color.Primary" Class="mb-2" />
+                        <MudText Typo="Typo.caption">Based on your profile goal and weight.</MudText>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="p-4 rounded-lg shadow-sm h-100" Elevation="2">
+                        <MudText Typo="Typo.h6" GutterBottom="true">Last 24 hours</MudText>
+                        @((MarkupString)RenderNutritionChart(last24hTotals, dailyCalorieTarget, "24h"))
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="p-4 rounded-lg shadow-sm h-100" Elevation="2">
+                        <MudText Typo="Typo.h6" GutterBottom="true">Last 7 days</MudText>
+                        @((MarkupString)RenderNutritionChart(last7DaysTotals, dailyCalorieTarget * 7, "7d"))
+                    </MudPaper>
+                </MudItem>
+
                 <MudItem xs="12" md="6">
                     <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
                         <MudText Typo="Typo.h6">Body Stats</MudText>
@@ -137,10 +163,56 @@
                         </div>
                     </MudPaper>
                 </MudItem>
-            </MudGrid>
-        </MudExpansionPanel>
-    </MudExpansionPanels>
-</MudContainer>
+
+                <MudItem xs="12">
+                    <MudPaper Class="p-4 rounded-lg shadow-sm" Elevation="2">
+                        <MudText Typo="Typo.h6" GutterBottom="true">Today's Meals</MudText>
+                        @if (todayMeals.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2">No meals logged yet today.</MudText>
+                        }
+                        else
+                        {
+                            <MudTable Items="todayMeals" Hover="true" Striped="true" Class="mt-4">
+                                <HeaderContent>
+                                    <MudTh>Recipe</MudTh>
+                                    <MudTh>Time</MudTh>
+                                    <MudTh>Calories</MudTh>
+                                    <MudTh Style="text-align: right;">Action</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>
+                                        @if (context.Recipe != null)
+                                        {
+                                            <MudText Typo="Typo.body2">@context.Recipe.Title</MudText>
+                                        }
+                                        else
+                                        {
+                                            <MudText Typo="Typo.body2"
+                                                     Style="font-style: italic; color: var(--mud-palette-text-secondary);">External
+                                                Recipe</MudText>
+                                            }
+                                        </MudTd>
+                                        <MudTd>
+                                            <MudText Typo="Typo.body2">@context.EatenAt.ToString("HH:mm")</MudText>
+                                        </MudTd>
+                                        <MudTd>
+                                            <MudText Typo="Typo.body2">@(context.Recipe?.TotalCalories.ToString("F0") ?? "N/A")
+                                                kcal</MudText>
+                                            </MudTd>
+                                            <MudTd Style="text-align: right;">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                                               Size="Size.Small" OnClick="@(() => DeleteMealAsync(context.Id))" />
+                                            </MudTd>
+                                        </RowTemplate>
+                                    </MudTable>
+                                }
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        </MudContainer>
 
 @code {
     // Profile
@@ -166,6 +238,13 @@
     // Overview
     private UserProfile? userProfile;
     private int recipeCount = 0;
+    private List<DailyLog> recentLogs = new();
+    private List<Meal> todayMeals = new();
+    private NutritionTotals todayTotals = NutritionTotals.Empty;
+    private NutritionTotals last24hTotals = NutritionTotals.Empty;
+    private NutritionTotals last7DaysTotals = NutritionTotals.Empty;
+    private double dailyCalorieTarget = 2200;
+    private double todayCalories = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -173,6 +252,7 @@
         await LoadAllergies();
         await LoadPreferences();
         await LoadRecipeCount();
+        await LoadNutritionOverview();
     }
 
     private async Task LoadProfile()
@@ -239,6 +319,7 @@
                 editing = false;
                 Snackbar.Add("Profile saved successfully.", Severity.Success);
                 await LoadProfile();
+                await LoadNutritionOverview();
                 return;
             }
 
@@ -357,12 +438,161 @@ StringSplitOptions.RemoveEmptyEntries).ToList();
         catch { /* ignore */ }
     }
 
+    private async Task LoadNutritionOverview()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userPrincipal = authState.User;
+        var userIdClaim = userPrincipal.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
+        {
+            return;
+        }
+
+        dailyCalorieTarget = CalculateDailyCaloriesTarget();
+
+        var dates = Enumerable.Range(0, 7).Select(offset => DateTime.UtcNow.Date.AddDays(-offset)).ToList();
+        var requests = dates
+            .Select(date => new { Date = date, Task = Http.GetAsync($"api/DailyLog/{userId}/{date:yyyy-MM-dd}") })
+            .ToList();
+
+        await Task.WhenAll(requests.Select(item => item.Task));
+
+        var logs = new List<DailyLog>();
+        foreach (var entry in requests)
+        {
+            var response = await entry.Task;
+            if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                await HandleAuthorizationFailure();
+                return;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                var log = await response.Content.ReadFromJsonAsync<DailyLog>();
+                if (log != null)
+                {
+                    logs.Add(log);
+                }
+            }
+        }
+
+        recentLogs = logs.OrderByDescending(log => log.Date).ToList();
+        todayTotals = SumTotals(recentLogs.Where(log => log.Date.Date == DateTime.UtcNow.Date).SelectMany(log => log.Meals));
+        last24hTotals = SumTotals(recentLogs.SelectMany(log => log.Meals).Where(meal => meal.EatenAt >=
+DateTime.UtcNow.AddHours(-24)));
+        last7DaysTotals = SumTotals(recentLogs.SelectMany(log => log.Meals));
+        todayCalories = todayTotals.Calories;
+        
+        // Extract today's meals for display in the table
+        var todayLog = recentLogs.FirstOrDefault(log => log.Date.Date == DateTime.UtcNow.Date);
+        todayMeals = todayLog?.Meals.OrderByDescending(m => m.EatenAt).ToList() ?? new List<Meal>();
+    }
+
+    private double CalculateDailyCaloriesTarget()
+    {
+        var objective = userProfile?.Objective?.ToLowerInvariant() ?? string.Empty;
+        var weight = userProfile?.Weight ?? 0;
+
+        if (weight > 0)
+        {
+            if (objective.Contains("loss") || objective.Contains("cut") || objective.Contains("diet"))
+            {
+                return Math.Clamp(weight * 24, 1600, 2600);
+            }
+
+            if (objective.Contains("muscle") || objective.Contains("bulk") || objective.Contains("gain"))
+            {
+                return Math.Clamp(weight * 34, 2200, 3400);
+            }
+
+            return Math.Clamp(weight * 30, 1800, 3200);
+        }
+
+        if (objective.Contains("loss") || objective.Contains("cut") || objective.Contains("diet"))
+        {
+            return 1800;
+        }
+
+        if (objective.Contains("muscle") || objective.Contains("bulk") || objective.Contains("gain"))
+        {
+            return 2800;
+        }
+
+        return 2200;
+    }
+
+    private static NutritionTotals SumTotals(IEnumerable<Meal> meals)
+    {
+        var mealList = meals.Where(meal => meal.Recipe != null).ToList();
+        return new NutritionTotals(
+            mealList.Sum(meal => (double)meal.Recipe.TotalCalories),
+            mealList.Sum(meal => (double)meal.Recipe.TotalProtein),
+            mealList.Sum(meal => (double)meal.Recipe.TotalCarbs),
+            mealList.Sum(meal => (double)meal.Recipe.TotalFats));
+    }
+
+    private double TodayCalorieProgress => dailyCalorieTarget <= 0 ? 0 : Math.Min(100, todayCalories / dailyCalorieTarget *
+100);
+
+    private string RenderNutritionChart(NutritionTotals totals, double calorieTarget, string windowLabel)
+    {
+        var metrics = BuildNutritionMetrics(totals, calorieTarget);
+        var rows = string.Join("", metrics.Select(metric => $"<div style='margin-bottom:12px;'><div style='display:flex;justify-content:space-between;gap:12px;margin-bottom:4px;'><span>{metric.Label}</span><span><b>{metric.Value:F0} {metric.Unit}</b> / {metric.Target:F0} {metric.Unit}</span></div><div style='height:10px;background:rgba(0,0,0,0.08);border-radius:999px;overflow:hidden;'><div style='width:{Math.Min(100,
+metric.Target <= 0 ? 0 : metric.Value / metric.Target *
+100):F0}%;height:100%;background:{metric.Color};border-radius:999px;'></div></div></div>"));
+        return $"<div><div style='font-size:12px;opacity:.7;margin-bottom:8px;'>Window: {windowLabel}</div>{rows}</div>";
+    }
+
+    private IReadOnlyList<NutritionMetric> BuildNutritionMetrics(NutritionTotals totals, double calorieTarget)
+    {
+        var proteinTarget = Math.Max(100, calorieTarget / 20);
+        var carbsTarget = Math.Max(180, calorieTarget / 8);
+        var fatsTarget = Math.Max(50, calorieTarget / 30);
+
+        return new List<NutritionMetric>
+        {
+            new("Calories", totals.Calories, calorieTarget, "kcal", "var(--mud-palette-primary)"),
+            new("Protein", totals.Protein, proteinTarget, "g", "var(--mud-palette-success)"),
+            new("Carbs", totals.Carbs, carbsTarget, "g", "var(--mud-palette-warning)"),
+            new("Fats", totals.Fats, fatsTarget, "g", "var(--mud-palette-error)"),
+        };
+    }
+
     private async Task HandleAuthorizationFailure()
     {
         if (AuthStateProvider is CustomAuthStateProvider customAuth) await customAuth.MarkUserAsLoggedOut();
         Snackbar.Add("Session expired or invalid. Please log in again.", Severity.Warning);
         Navigation.NavigateTo("/login");
     }
+
+    private async Task DeleteMealAsync(Guid mealId)
+    {
+        var response = await Http.DeleteAsync($"api/DailyLog/meal/{mealId}");
+        
+        if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+        {
+            await HandleAuthorizationFailure();
+            return;
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Meal deleted successfully.", Severity.Success);
+            await LoadNutritionOverview();
+        }
+        else
+        {
+            Snackbar.Add("Could not delete meal.", Severity.Error);
+        }
+    }
+
+    private sealed record NutritionTotals(double Calories, double Protein, double Carbs, double Fats)
+    {
+        public static NutritionTotals Empty { get; } = new(0, 0, 0, 0);
+    }
+
+    private sealed record NutritionMetric(string Label, double Value, double Target, string Unit, string Color);
 
     // Small view models
     private class AllergyVm

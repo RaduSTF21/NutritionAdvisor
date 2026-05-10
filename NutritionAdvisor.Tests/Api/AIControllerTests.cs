@@ -13,9 +13,18 @@ namespace NutritionAdvisor.Tests.Api;
 public class AIControllerTests
 {
     [Fact]
-    public async Task RecommendRecipes_ReturnsFreeMode_AndFiltersBlockedRecipes()
+    public async Task RecommendRecipes_ForwardsUserContextAndReturnsServiceResponse()
     {
         var userId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(repository => repository.GetByIdAsync(userId))
+            .ReturnsAsync(new User
+            {
+                UserId = userId,
+                SubscriptionPlan = SubscriptionPlan.Free,
+                SubscriptionStatus = SubscriptionStatus.Inactive
+            });
+
         var recipeRepository = new Mock<IRecipeRepository>();
         recipeRepository.Setup(repository => repository.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[]
@@ -45,32 +54,61 @@ public class AIControllerTests
         allergyRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<Allergy>());
 
+        AiRecommendationRequestModel? capturedRequest = null;
+        var pythonAiService = new Mock<IPythonAiService>();
+        pythonAiService.Setup(service => service.GetRecommendationsAsync(It.IsAny<AiRecommendationRequestModel>()))
+            .Callback<AiRecommendationRequestModel>(request => capturedRequest = request)
+            .ReturnsAsync(new AiRecommendationResponseModel(
+                userId,
+                "Free",
+                new List<AiRecommendationItemModel>
+                {
+                    new("1", "Salată cu pui", "Meal free", new List<string> { "pui", "salată" }, "Selected locally.", false, 25)
+                }));
+
         var controller = CreateController(
             userId,
             "Free",
             "Inactive",
             DateTime.UtcNow.AddDays(-1),
+            userRepository.Object,
             recipeRepository.Object,
             profileRepository.Object,
             preferenceRepository.Object,
             allergyRepository.Object,
-            Mock.Of<IPythonAiService>());
+            pythonAiService.Object);
 
-        var result = await controller.RecommendRecipes(new AiRecommendationRequestDto { Limit = 5 }, CancellationToken.None);
+        var result = await controller.RecommendRecipes(new FrontendRecommendationRequest(5));
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        var payload = Assert.IsType<AiRecommendationResponseDto>(ok.Value);
+        var payload = Assert.IsType<AiRecommendationResponseModel>(ok.Value);
 
         Assert.Equal("Free", payload.Mode);
         Assert.Single(payload.Recommendations);
         Assert.Equal("Salată cu pui", payload.Recommendations[0].Title);
         Assert.False(payload.Recommendations[0].Premium);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(5, capturedRequest!.Limit);
+        Assert.Equal(userId.ToString(), capturedRequest.UserId);
+        Assert.Equal("Weight Loss", capturedRequest.Objective);
+        Assert.Equal(2, capturedRequest.AvailableRecipes.Count);
+        pythonAiService.Verify(service => service.GetRecommendationsAsync(It.IsAny<AiRecommendationRequestModel>()), Times.Once);
     }
 
     [Fact]
     public async Task RecommendRecipes_ReturnsPremiumMode_AndUsesPythonService()
     {
         var userId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(repository => repository.GetByIdAsync(userId))
+            .ReturnsAsync(new User
+            {
+                UserId = userId,
+                SubscriptionPlan = SubscriptionPlan.Premium,
+                SubscriptionStatus = SubscriptionStatus.Active,
+                SubscriptionEndAt = DateTime.UtcNow.AddDays(7)
+            });
+
         var recipeRepository = new Mock<IRecipeRepository>();
         recipeRepository.Setup(repository => repository.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<Recipe>());
@@ -96,59 +134,127 @@ public class AIControllerTests
         allergyRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<Allergy>());
 
+        AiRecommendationRequestModel? capturedRequest = null;
         var pythonAiService = new Mock<IPythonAiService>();
-        pythonAiService.Setup(service => service.RecommendRecipesAsync(It.IsAny<AiContextDto>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[]
-            {
-                new AiRecommendationItemDto("1", "Paste proteice", "Meal premium", new[] { "paste", "pui" }, "AI premium", true, 25)
-            });
+        pythonAiService.Setup(service => service.GetRecommendationsAsync(It.IsAny<AiRecommendationRequestModel>()))
+            .Callback<AiRecommendationRequestModel>(request => capturedRequest = request)
+            .ReturnsAsync(new AiRecommendationResponseModel(
+                userId,
+                "Premium",
+                new List<AiRecommendationItemModel>
+                {
+                    new("1", "Paste proteice", "Meal premium", new List<string> { "paste", "pui" }, "AI premium", true, 25)
+                }));
 
         var controller = CreateController(
             userId,
             "Premium",
             "Active",
             DateTime.UtcNow.AddDays(7),
+            userRepository.Object,
             recipeRepository.Object,
             profileRepository.Object,
             preferenceRepository.Object,
             allergyRepository.Object,
             pythonAiService.Object);
 
-        var result = await controller.RecommendRecipes(new AiRecommendationRequestDto { Limit = 3 }, CancellationToken.None);
+        var result = await controller.RecommendRecipes(new FrontendRecommendationRequest(3));
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        var payload = Assert.IsType<AiRecommendationResponseDto>(ok.Value);
+        var payload = Assert.IsType<AiRecommendationResponseModel>(ok.Value);
 
         Assert.Equal("Premium", payload.Mode);
         Assert.Single(payload.Recommendations);
         Assert.True(payload.Recommendations[0].Premium);
-        pythonAiService.Verify(service => service.RecommendRecipesAsync(It.IsAny<AiContextDto>(), 3, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(3, capturedRequest!.Limit);
+        pythonAiService.Verify(service => service.GetRecommendationsAsync(It.IsAny<AiRecommendationRequestModel>()), Times.Once);
     }
 
     [Fact]
     public async Task GenerateMealPlan_ReturnsPremiumMealPlan()
     {
         var userId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(repository => repository.GetByIdAsync(userId))
+            .ReturnsAsync(new User
+            {
+                UserId = userId,
+                SubscriptionPlan = SubscriptionPlan.Premium,
+                SubscriptionStatus = SubscriptionStatus.Active,
+                SubscriptionEndAt = DateTime.UtcNow.AddDays(7)
+            });
+
+        var profileRepository = new Mock<IUserProfileRepository>();
+        profileRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserProfile
+            {
+                UserId = userId,
+                Name = "Radu",
+                Objective = "Weight Loss"
+            });
+
+        var preferenceRepository = new Mock<IFoodPreferenceRepository>();
+        preferenceRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodPreference
+            {
+                UserId = userId,
+                DislikedIngredients = new List<string>()
+            });
+
+        var allergyRepository = new Mock<IAllergyRepository>();
+        allergyRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Allergy>());
+
+        AiMealPlanRequestModel? capturedRequest = null;
+        var pythonAiService = new Mock<IPythonAiService>();
+        pythonAiService.Setup(service => service.GenerateMealPlanAsync(It.IsAny<AiMealPlanRequestModel>()))
+            .Callback<AiMealPlanRequestModel>(request => capturedRequest = request)
+            .ReturnsAsync(new AiMealPlanResponseModel(
+                userId,
+                "Premium",
+                "Plan generat",
+                new List<AiMealPlanDayModel>
+                {
+                    new(
+                        "2026-05-10",
+                        "Day 1",
+                        "Ușoară și rapidă.",
+                        420,
+                        new List<AiMealPlanMealModel>
+                        {
+                            new("Breakfast", null, "Salată cu pui", null, 420, 30, 20, 15)
+                        })
+                }));
+
+        var recipeRepository = new Mock<IRecipeRepository>();
+        recipeRepository.Setup(repository => repository.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Recipe>());
+
         var controller = CreateController(
             userId,
             "Premium",
             "Active",
             DateTime.UtcNow.AddDays(7),
-            Mock.Of<IRecipeRepository>(),
-            Mock.Of<IUserProfileRepository>(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()) == Task.FromResult<UserProfile?>(new UserProfile { UserId = userId, Name = "Radu", Objective = "Weight Loss" })),
-            Mock.Of<IFoodPreferenceRepository>(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()) == Task.FromResult<FoodPreference?>(new FoodPreference { UserId = userId })),
-            Mock.Of<IAllergyRepository>(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()) == Task.FromResult<IEnumerable<Allergy>>(Array.Empty<Allergy>())),
-            Mock.Of<IPythonAiService>(service => service.GenerateMealPlanAsync(It.IsAny<AiContextDto>(), It.IsAny<int>(), It.IsAny<CancellationToken>()) == Task.FromResult(new AiMealPlanResponseDto(userId, "Premium", "Plan generat", new[] { new AiMealPlanDayDto("day-1", "Salată cu pui", "Ușoară și rapidă.", 420) })))
-        );
+            userRepository.Object,
+            recipeRepository.Object,
+            profileRepository.Object,
+            preferenceRepository.Object,
+            allergyRepository.Object,
+            pythonAiService.Object);
 
-        var result = await controller.GenerateMealPlan(new AiMealPlanRequestDto { Days = 4 }, CancellationToken.None);
+        var result = await controller.GenerateMealPlan(new FrontendMealPlanRequest(4));
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        var payload = Assert.IsType<AiMealPlanResponseDto>(ok.Value);
+        var payload = Assert.IsType<AiMealPlanResponseModel>(ok.Value);
 
         Assert.Equal("Premium", payload.Mode);
         Assert.Single(payload.Days);
         Assert.Equal("Plan generat", payload.Summary);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(4, capturedRequest!.Days);
+        Assert.Equal(userId.ToString(), capturedRequest.UserId);
+        pythonAiService.Verify(service => service.GenerateMealPlanAsync(It.IsAny<AiMealPlanRequestModel>()), Times.Once);
     }
 
     private static AIController CreateController(
@@ -156,13 +262,20 @@ public class AIControllerTests
         string subscriptionPlan,
         string subscriptionStatus,
         DateTime expiresAt,
+        IUserRepository userRepository,
         IRecipeRepository recipeRepository,
         IUserProfileRepository profileRepository,
         IFoodPreferenceRepository preferenceRepository,
         IAllergyRepository allergyRepository,
         IPythonAiService pythonAiService)
     {
-        var controller = new AIController(recipeRepository, profileRepository, preferenceRepository, allergyRepository, pythonAiService)
+        var controller = new AIController(
+            pythonAiService,
+            userRepository,
+            profileRepository,
+            allergyRepository,
+            preferenceRepository,
+            recipeRepository)
         {
             ControllerContext = new ControllerContext
             {

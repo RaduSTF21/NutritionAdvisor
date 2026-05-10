@@ -4,6 +4,8 @@ using MediatR;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NutritionAdvisor.Application.DailyLogs.Commands.DeleteMeal;
+using NutritionAdvisor.Application.DailyLogs.Commands.LogExternalMeal;
 using NutritionAdvisor.Application.DailyLogs.Commands.LogMeal;
 using NutritionAdvisor.Application.DailyLogs.Queries.GetDailyLog;
 using NutritionAdvisor.Domain.Entities;
@@ -34,6 +36,20 @@ public class DailyLogController : ControllerBase
         return Ok(id);
     }
 
+    [HttpPost("log-external-meal")]
+    public async Task<IActionResult> LogExternalMeal([FromBody] LogExternalMealCommand command)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var securedCommand = command with { UserId = userId };
+        var id = await _sender.Send(securedCommand);
+        return Ok(id);
+    }
+
     [HttpGet("{userId}/{date}")]
     public async Task<IActionResult> GetDailyLog(Guid userId, DateTime date)
     {
@@ -58,5 +74,25 @@ public class DailyLogController : ControllerBase
                 Meals = new List<Meal>()
             });
         return Ok(result);
+    }
+
+    [HttpDelete("meal/{mealId}")]
+    public async Task<IActionResult> DeleteMeal(Guid mealId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var command = new DeleteMealCommand(userId, mealId);
+        var success = await _sender.Send(command);
+
+        if (!success)
+        {
+            return NotFound("Meal not found or you don't have permission to delete it.");
+        }
+
+        return Ok();
     }
 }

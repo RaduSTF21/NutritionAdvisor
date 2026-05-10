@@ -37,6 +37,12 @@ public sealed class InMemoryUserRepository : IUserRepository
         LastSavedUser = user;
         return Task.CompletedTask;
     }
+
+    public Task<User?> GetByProviderSubscriptionIdAsync(string providerSubscriptionId)
+    {
+        var user = _usersById.Values.FirstOrDefault(u => u.ProviderSubscriptionId == providerSubscriptionId);
+        return Task.FromResult(user);
+    }
 }
 
 public sealed class InMemoryUserProfileRepository : IUserProfileRepository

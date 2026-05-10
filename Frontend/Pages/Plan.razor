@@ -1,0 +1,407 @@
+@page "/plan"
+@using Frontend.Models
+@using NutritionAdvisor.Domain.Entities
+@using NutritionAdvisor.Domain.Enums
+@using System.Net
+@using System.Net.Http.Json
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
+    <MudPaper Class="pa-6 mb-6 meal-plan-hero" Elevation="3">
+        <MudText Typo="Typo.h4" Class="mb-2">Nutrition Plan</MudText>
+        <MudText Typo="Typo.body1">Create a daily meal plan and keep track of what you want to eat across the week.
+        </MudText>
+    </MudPaper>
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-5 h-100" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">Create Daily Plan</MudText>
+
+                <MudDatePicker id="plan-date" Label="Date" @bind-Date="selectedDate" Class="mb-3" />
+                <MudNumericField T="int" id="plan-target-calories" Label="Target Calories" @bind-Value="targetCalories"
+                                 Min="800" Max="5000" Class="mb-3" />
+
+                <MudSelect T="Guid?" Label="Breakfast" @bind-Value="breakfastRecipeId" Class="mb-3">
+                    <MudSelectItem T="Guid?" Value="null">Select breakfast</MudSelectItem>
+                    @foreach (var recipe in recipes)
+                    {
+                        <MudSelectItem T="Guid?" Value="@recipe.Id">@recipe.Title</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudSelect T="Guid?" Label="Lunch" @bind-Value="lunchRecipeId" Class="mb-3">
+                    <MudSelectItem T="Guid?" Value="null">Select lunch</MudSelectItem>
+                    @foreach (var recipe in recipes)
+                    {
+                        <MudSelectItem T="Guid?" Value="@recipe.Id">@recipe.Title</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudSelect T="Guid?" Label="Dinner" @bind-Value="dinnerRecipeId" Class="mb-3">
+                    <MudSelectItem T="Guid?" Value="null">Select dinner</MudSelectItem>
+                    @foreach (var recipe in recipes)
+                    {
+                        <MudSelectItem T="Guid?" Value="@recipe.Id">@recipe.Title</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="CreateMealPlan"
+                           Disabled="@isSubmitting">
+                    Save meal plan
+                </MudButton>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-5" Elevation="2">
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudText Typo="Typo.h6">Saved Plans</MudText>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadMealPlans">
+                        Refresh
+                    </MudButton>
+                </div>
+
+                @if (mealPlans == null)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                }
+                else if (!mealPlans.Any())
+                {
+                    <MudAlert Severity="Severity.Info">No meal plans yet. Create the first one on the left.</MudAlert>
+                }
+                else
+                {
+                    <MudStack Spacing="3">
+                        @foreach (var plan in mealPlans.OrderByDescending(p => p.Date))
+                        {
+                            <MudCard Elevation="2" Class="pa-4">
+                                <div class="d-flex justify-space-between align-center">
+                                    <div>
+                                        <MudText Typo="Typo.subtitle1"><b>@plan.Date.ToString("dd MMM yyyy")</b></MudText>
+                                        <MudText Typo="Typo.body2">
+                                            Target: @plan.TargetCalories kcal | Actual: @plan.TotalCalories kcal
+                                        </MudText>
+                                    </div>
+                                    <div class="d-flex align-center gap-2">
+                                        <MudChip T="string" Size="Size.Small"
+                                                 Color="@(plan.IsAIGenerated ? Color.Secondary : Color.Info)">
+                                            @(plan.IsAIGenerated ? "AI generated" : "Manual")
+                                        </MudChip>
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                                       Size="Size.Small" OnClick="@(() => DeletePlanAsync(plan.Id))"
+                                                       Disabled="@isDeleting" />
+                                    </div>
+                                </div>
+
+                                <MudDivider Class="my-3" />
+
+                                <MudGrid>
+                                    @foreach (var item in plan.Items.OrderBy(i => i.MealType))
+                                    {
+                                        <MudItem xs="12" sm="6">
+                                            <MudPaper Class="pa-3" Elevation="0"
+                                                      Style="background-color: rgba(255,255,255,0.6); border-radius: 8px;">
+                                                <MudText Typo="Typo.caption" Color="Color.Primary">
+                                                    <b>@item.MealType.ToString().ToUpper()</b>
+                                                </MudText>
+
+                                                @if (item.RecipeId.HasValue && item.RecipeId != Guid.Empty)
+                                                {
+                                                    <MudText Typo="Typo.body1" Class="mt-1">
+                                                        <MudLink Href="@($"/recipe/{item.RecipeId}")" Color="Color.Dark">
+                                                            <b>@GetMealDisplayTitle(item)</b>
+                                                        </MudLink>
+                                                    </MudText>
+                                                }
+                                                else if (!string.IsNullOrWhiteSpace(item.ExternalUrl))
+                                                {
+                                                    <MudText Typo="Typo.body1" Class="mt-1">
+                                                        <MudLink Href="@item.ExternalUrl" Target="_blank" Color="Color.Secondary">
+                                                            <b>@GetMealDisplayTitle(item)</b>
+                                                            <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small"
+                                                                     Class="ms-1" />
+                                                        </MudLink>
+                                                    </MudText>
+                                                }
+                                                else
+                                                {
+                                                    <MudText Typo="Typo.body1" Class="mt-1">
+                                                        <b>@GetMealDisplayTitle(item)</b>
+                                                    </MudText>
+                                                }
+
+                                                <div class="d-flex gap-2 mt-2 align-center">
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Success">
+                                                        @item.Calories.ToString("F0") kcal
+                                                    </MudChip>
+                                                    <MudText Typo="Typo.caption" Color="Color.Default">
+                                                        P: @item.Protein.ToString("F0")g | C: @item.Carbs.ToString("F0")g | F:
+                                                        @item.Fats.ToString("F0")g
+                                                    </MudText>
+                                                </div>
+
+                                                <MudStack Row="true" Spacing="1" Class="mt-3 flex-wrap">
+                                                    @if (item.RecipeId.HasValue && item.RecipeId != Guid.Empty)
+                                                    {
+                                                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                                                   StartIcon="@Icons.Material.Filled.Restaurant"
+                                                                   OnClick="@(() => EatPlanMealAsync(item.RecipeId.Value, GetMealDisplayTitle(item)))"
+                                                                   Disabled="@isEatingMeal">
+                                                            Eat Food
+                                                        </MudButton>
+                                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                                                   Href="@($"/recipe/{item.RecipeId}")">
+                                                            View recipe
+                                                        </MudButton>
+                                                    }
+                                                    else if (!string.IsNullOrWhiteSpace(item.ExternalUrl))
+                                                    {
+                                                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                                                   StartIcon="@Icons.Material.Filled.Restaurant"
+                                                                   OnClick="@(() => EatExternalPlanMealAsync(item))" Disabled="@isEatingMeal">
+                                                            Eat Food
+                                                        </MudButton>
+                                                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small"
+                                                                   Href="@item.ExternalUrl" Target="_blank"
+                                                                   StartIcon="@Icons.Material.Filled.OpenInNew">
+                                                            Open recipe
+                                                        </MudButton>
+                                                    }
+                                                </MudStack>
+                                            </MudPaper>
+                                        </MudItem>
+                                    }
+                                </MudGrid>
+                            </MudCard>
+                        }
+                    </MudStack>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private List<RecipeModel> recipes = new();
+    private List<MealPlan>? mealPlans;
+    private DateTime? selectedDate = DateTime.UtcNow.Date;
+    private int targetCalories = 2200;
+
+    private Guid? breakfastRecipeId;
+    private Guid? lunchRecipeId;
+    private Guid? dinnerRecipeId;
+
+    private bool isSubmitting;
+    private bool isDeleting;
+    private bool isEatingMeal;
+
+    private readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRecipes();
+        await LoadMealPlans();
+    }
+
+    private async Task LoadRecipes()
+    {
+        try
+        {
+            recipes = await Http.GetFromJsonAsync<List<RecipeModel>>("api/recipes") ?? new List<RecipeModel>();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not load recipes: {ex.Message}", Severity.Error);
+            recipes = new List<RecipeModel>();
+        }
+    }
+
+    private async Task LoadMealPlans()
+    {
+        try
+        {
+            mealPlans = await Http.GetFromJsonAsync<List<MealPlan>>("api/mealplans", _jsonOptions) ?? new List<MealPlan>();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not load meal plans: {ex.Message}", Severity.Error);
+            mealPlans = new List<MealPlan>();
+        }
+    }
+
+    private async Task CreateMealPlan()
+    {
+        if (selectedDate == null)
+        {
+            Snackbar.Add("Please choose a date.", Severity.Warning);
+            return;
+        }
+
+        var items = new List<CreateMealPlanItemRequest>();
+        if (breakfastRecipeId.HasValue) items.Add(new CreateMealPlanItemRequest(MealType.Breakfast, breakfastRecipeId));
+        if (lunchRecipeId.HasValue) items.Add(new CreateMealPlanItemRequest(MealType.Lunch, lunchRecipeId));
+        if (dinnerRecipeId.HasValue) items.Add(new CreateMealPlanItemRequest(MealType.Dinner, dinnerRecipeId));
+
+        if (!items.Any())
+        {
+            Snackbar.Add("Select at least one recipe.", Severity.Warning);
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            var payload = new CreateMealPlanRequest
+            {
+                Date = selectedDate.Value.Date,
+                TargetCalories = targetCalories,
+                IsAIGenerated = false,
+                Items = items
+            };
+
+            var response = await Http.PostAsJsonAsync("api/mealplans/daily", payload, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Meal plan saved.", Severity.Success);
+                breakfastRecipeId = null;
+                lunchRecipeId = null;
+                dinnerRecipeId = null;
+                await LoadMealPlans();
+            }
+            else
+            {
+                var errorText = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(string.IsNullOrWhiteSpace(errorText) ? "Could not save the meal plan." : $"Could not save the meal plan: {errorText}", Severity.Error);
+            }
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task DeletePlanAsync(Guid planId)
+    {
+        isDeleting = true;
+        try
+        {
+            var response = await Http.DeleteAsync($"api/mealplans/{planId}");
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Meal plan deleted successfully.", Severity.Success);
+                await LoadMealPlans();
+            }
+            else
+            {
+                Snackbar.Add("Failed to delete the meal plan.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting plan: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+
+    private async Task EatPlanMealAsync(Guid recipeId, string title)
+    {
+        isEatingMeal = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/DailyLog/log-meal", new { RecipeId = recipeId });
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"Logged {title}.", Severity.Success);
+            }
+            else if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                Snackbar.Add("Please log in again to track meals.", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Could not log the meal.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not log the meal: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isEatingMeal = false;
+        }
+    }
+
+    private async Task EatExternalPlanMealAsync(MealPlanItem item)
+    {
+        isEatingMeal = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/DailyLog/log-external-meal", new
+            {
+                Title = GetMealDisplayTitle(item),
+                ExternalUrl = item.ExternalUrl,
+                Calories = item.Calories,
+                Protein = item.Protein,
+                Carbs = item.Carbs,
+                Fats = item.Fats
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"Logged {GetMealDisplayTitle(item)}.", Severity.Success);
+            }
+            else if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                Snackbar.Add("Please log in again to track meals.", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Could not log the meal.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not log the meal: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isEatingMeal = false;
+        }
+    }
+
+    private static string GetMealDisplayTitle(MealPlanItem item)
+        => item.Recipe?.Title ?? item.ExternalTitle ?? item.MealType.ToString();
+
+    private sealed class CreateMealPlanRequest
+    {
+        public DateTime Date { get; set; }
+        public int TargetCalories { get; set; }
+        public bool IsAIGenerated { get; set; }
+        public List<CreateMealPlanItemRequest> Items { get; set; } = new();
+    }
+
+    private sealed class CreateMealPlanItemRequest
+    {
+        public CreateMealPlanItemRequest(MealType mealType, Guid? recipeId)
+        {
+            MealType = mealType;
+            RecipeId = recipeId;
+        }
+
+        public MealType MealType { get; set; }
+        public Guid? RecipeId { get; set; }
+    }
+}
