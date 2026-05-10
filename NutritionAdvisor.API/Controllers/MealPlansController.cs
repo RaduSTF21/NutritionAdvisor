@@ -107,7 +107,7 @@ public class MealPlansController : ControllerBase
 
     private Guid? GetUserId()
     {
-        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userIdString = User?.FindFirstValue(ClaimTypes.NameIdentifier);
         return Guid.TryParse(userIdString, out var userId) ? userId : null;
     }
 }
