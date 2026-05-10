@@ -67,6 +67,12 @@ class MealPlanRequest(BaseAiModel):
     allergies: List[str] = []
     disliked_ingredients: List[str] = []
     available_recipes: List[Dict[str, Any]] = []
+    weight_kg: Optional[float] = None
+    height_cm: Optional[float] = None
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    diet_type: Optional[str] = None
+    preferred_cuisines: List[str] = []
 
 class CoachRequest(BaseAiModel):
     user_id: str
@@ -233,14 +239,22 @@ def _search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[str, An
                     else:
                         ingredients.append(ing.strip())
 
+            source_url = m.get("strSource")
+            youtube_url = m.get("strYoutube")
+            external_url = None
+            for candidate_url in [source_url, youtube_url]:
+                if candidate_url and not _is_placeholder_url(candidate_url) and _is_url_accessible(candidate_url):
+                    external_url = candidate_url
+                    break
+
             results.append({
                 "id": m.get("idMeal"),
                 "title": m.get("strMeal"),
                 "description": (m.get("strInstructions") or "")[:400],
                 "ingredients": ingredients,
-                "sourceUrl": m.get("strSource"),
-                "youtubeUrl": m.get("strYoutube"),
-                "externalUrl": m.get("strSource") or m.get("strYoutube"),
+                "sourceUrl": source_url,
+                "youtubeUrl": youtube_url,
+                "externalUrl": external_url,
                 "cookingTimeInMinutes": 30,
             })
         return results
@@ -270,6 +284,18 @@ _URL_VALIDATION_CACHE_TTL = int(os.getenv("URL_VALIDATION_CACHE_TTL", "86400"))
 def _homepage_like_path(parsed_url: Any) -> bool:
     path = (getattr(parsed_url, "path", "") or "").strip().lower()
     return path in {"", "/", "/home", "/index", "/index.html"}
+
+
+def _is_placeholder_url(url: Optional[str]) -> bool:
+    if not url or not isinstance(url, str):
+        return False
+
+    try:
+        host = urlsplit(url.strip()).netloc.lower()
+    except Exception:
+        return False
+
+    return host in {"example.com", "www.example.com", "example.org", "www.example.org", "example.net", "www.example.net"}
 
 
 def _is_url_accessible(url: Optional[str], timeout: float = 6.0) -> bool:
@@ -337,7 +363,7 @@ def _resolve_verified_external_recipe(recipe_title: str, objective: Optional[str
         candidates = _cached_search_themealdb(str(term), limit=8)
         for candidate in candidates:
             for candidate_url in [candidate.get("externalUrl"), candidate.get("sourceUrl"), candidate.get("youtubeUrl")]:
-                if _is_url_accessible(candidate_url):
+                if candidate_url and not _is_placeholder_url(candidate_url) and _is_url_accessible(candidate_url):
                     return {
                         "id": candidate.get("id"),
                         "title": candidate.get("title") or recipe_title,
@@ -364,7 +390,7 @@ def _enrich_meal_plan_external_urls(days: List[Dict[str, Any]], objective: Optio
                 continue
 
             external_url = item.get("externalUrl")
-            if external_url and _is_url_accessible(external_url):
+            if external_url and not _is_placeholder_url(external_url) and _is_url_accessible(external_url):
                 items.append(item)
                 continue
 
@@ -392,12 +418,20 @@ def _generate_meal_plan_days_with_macros(
     days_list = []
     meal_types = ["Breakfast", "Lunch", "Dinner"]
     
-    # Better calorie targets: default 2400 cal/day for maintenance (can be adjusted based on objective)
+    # Better calorie targets: default 2400 cal/day for maintenance (can be adjusted based on objective and body weight)
     # Breakfast ~30%, Lunch ~35%, Dinner ~35%
     daily_target = 2400
-    if request.objective and any(w in request.objective.lower() for w in ["weight loss", "cut", "diet"]):
+    objective_text = _normalize_text(request.objective)
+    if request.weight_kg and request.weight_kg > 0:
+        if any(w in objective_text for w in ["weight loss", "cut", "diet"]):
+            daily_target = max(1600, min(2600, int(request.weight_kg * 24)))
+        elif any(w in objective_text for w in ["muscle", "bulk", "gain"]):
+            daily_target = max(2200, min(3400, int(request.weight_kg * 34)))
+        else:
+            daily_target = max(1800, min(3000, int(request.weight_kg * 30)))
+    elif objective_text and any(w in objective_text for w in ["weight loss", "cut", "diet"]):
         daily_target = 1800
-    elif request.objective and any(w in request.objective.lower() for w in ["muscle", "bulk", "gain"]):
+    elif objective_text and any(w in objective_text for w in ["muscle", "bulk", "gain"]):
         daily_target = 2800
     
     meal_cals = {
@@ -412,7 +446,8 @@ def _generate_meal_plan_days_with_macros(
     ]
 
     # Fetch external recipes once for the entire plan (prefer external for diversity if few local recipes)
-    external_recipes = _cached_search_themealdb(request.objective or "", limit=12) if len(safe_recipes) < 4 else []
+    external_search_term = (request.preferred_cuisines[0] if request.preferred_cuisines else None) or request.objective or ""
+    external_recipes = _cached_search_themealdb(external_search_term, limit=12) if len(safe_recipes) < 4 else []
 
     # Track previous day's chosen recipe IDs per meal type
     prev_recipe_id_for_meal: Dict[str, Optional[str]] = {mt: None for mt in meal_types}
@@ -463,7 +498,7 @@ def _generate_meal_plan_days_with_macros(
             
             # Strategy 3: Fallback - try TheMealDB if nothing else
             if selected_recipe is None and not external_recipes:
-                ext = _cached_search_themealdb(request.objective or "", limit=5)
+                ext = _cached_search_themealdb(external_search_term, limit=5)
                 if ext:
                     for ext_cand in ext:
                         ext_id = str(ext_cand.get("id") or "")
@@ -578,6 +613,12 @@ def _compact_meal_plan_payload(request: MealPlanRequest) -> Dict[str, Any]:
         "days": max(1, min(request.days, 7)),
         "allergies": request.allergies[:6],
         "dislikedIngredients": request.disliked_ingredients[:6],
+        "weightKg": request.weight_kg,
+        "heightCm": request.height_cm,
+        "age": request.age,
+        "gender": request.gender,
+        "dietType": request.diet_type,
+        "preferredCuisines": request.preferred_cuisines[:6],
         "availableRecipes": _compact_available_recipes(request.available_recipes, limit=6),
     }
 
@@ -595,8 +636,11 @@ def _build_gemini_prompt(endpoint: str, payload: Dict[str, Any]) -> str:
         return (
             "Return compact JSON only. Create a diverse meal plan with NO REPEATS in the same day across different meal types. "
             "Vary recipes across days. If local recipes are limited, MUST search internet for diverse options. "
-            f"objective={payload.get('objective')}; days={payload.get('days')}; allergies={payload.get('allergies')}; "
-            f"dislikes={payload.get('dislikedIngredients')}; availableRecipes={_stable_json(payload.get('availableRecipes') or [])}. "
+            f"objective={payload.get('objective')}; days={payload.get('days')}; weightKg={payload.get('weightKg')}; "
+            f"heightCm={payload.get('heightCm')}; age={payload.get('age')}; gender={payload.get('gender')}; "
+            f"dietType={payload.get('dietType')}; preferredCuisines={payload.get('preferredCuisines')}; "
+            f"allergies={payload.get('allergies')}; dislikes={payload.get('dislikedIngredients')}; "
+            f"availableRecipes={_stable_json(payload.get('availableRecipes') or [])}. "
             "Use only different recipes for breakfast/lunch/dinner in same day. If few recipes available, fetch from internet for diversity. "
             "Schema: {summary,days:[{date,title,description,calories,items:[{mealType,title,recipeId,externalUrl,calories,protein,carbs,fats}]}]}."
         )

@@ -2,6 +2,7 @@
 @using Frontend.Models
 @using NutritionAdvisor.Domain.Entities
 @using NutritionAdvisor.Domain.Enums
+@using System.Net
 @using System.Net.Http.Json
 @using System.Text.Json
 @using System.Text.Json.Serialization
@@ -88,11 +89,9 @@
                                     </div>
                                     <div class="d-flex align-center gap-2">
                                         <MudChip T="string" Size="Size.Small"
-                                                 Color="@(plan.IsAIGenerated? Color.Secondary: Color.Info)">
+                                                 Color="@(plan.IsAIGenerated ? Color.Secondary : Color.Info)">
                                             @(plan.IsAIGenerated ? "AI generated" : "Manual")
                                         </MudChip>
-                                        
-                                        @* Un singur buton simplu de ștergere *@
                                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
                                                        Size="Size.Small" OnClick="@(() => DeletePlanAsync(plan.Id))"
                                                        Disabled="@isDeleting" />
@@ -108,45 +107,84 @@
                                             <MudPaper Class="pa-3" Elevation="0"
                                                       Style="background-color: rgba(255,255,255,0.6); border-radius: 8px;">
                                                 <MudText Typo="Typo.caption" Color="Color.Primary">
-                                                    <b>@item.MealType.ToString().ToUpper()</b></MudText>
+                                                    <b>@item.MealType.ToString().ToUpper()</b>
+                                                </MudText>
 
+                                                @if (item.RecipeId.HasValue && item.RecipeId != Guid.Empty)
+                                                {
+                                                    <MudText Typo="Typo.body1" Class="mt-1">
+                                                        <MudLink Href="@($"/recipe/{item.RecipeId}")" Color="Color.Dark">
+                                                            <b>@GetMealDisplayTitle(item)</b>
+                                                        </MudLink>
+                                                    </MudText>
+                                                }
+                                                else if (!string.IsNullOrWhiteSpace(item.ExternalUrl))
+                                                {
+                                                    <MudText Typo="Typo.body1" Class="mt-1">
+                                                        <MudLink Href="@item.ExternalUrl" Target="_blank" Color="Color.Secondary">
+                                                            <b>@GetMealDisplayTitle(item)</b>
+                                                            <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small"
+                                                                     Class="ms-1" />
+                                                        </MudLink>
+                                                    </MudText>
+                                                }
+                                                else
+                                                {
+                                                    <MudText Typo="Typo.body1" Class="mt-1">
+                                                        <b>@GetMealDisplayTitle(item)</b>
+                                                    </MudText>
+                                                }
+
+                                                <div class="d-flex gap-2 mt-2 align-center">
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Success">
+                                                        @item.Calories.ToString("F0") kcal
+                                                    </MudChip>
+                                                    <MudText Typo="Typo.caption" Color="Color.Default">
+                                                        P: @item.Protein.ToString("F0")g | C: @item.Carbs.ToString("F0")g | F:
+                                                        @item.Fats.ToString("F0")g
+                                                    </MudText>
+                                                </div>
+
+                                                <MudStack Row="true" Spacing="1" Class="mt-3 flex-wrap">
                                                     @if (item.RecipeId.HasValue && item.RecipeId != Guid.Empty)
                                                     {
-                                                        <MudText Typo="Typo.body1" Class="mt-1">
-                                                            <MudLink Href="@($"/recipe/{item.RecipeId}")" Color="Color.Dark">
-                                                                <b>@(item.Recipe?.Title ?? "Internal Recipe")</b></MudLink>
-                                                            </MudText>
-                                                        }
-                                                else if (!string.IsNullOrEmpty(item.ExternalUrl))
-                                                        {
-                                                            <MudText Typo="Typo.body1" Class="mt-1">
-                                                                <MudLink Href="@item.ExternalUrl" Target="_blank" Color="Color.Secondary">
-                                                                    <b>@item.ExternalTitle</b>
-                                                                    <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small"
-                                                                             Class="ms-1" />
-                                                                </MudLink>
-                                                            </MudText>
-                                                        }
-
-                                                        <div class="d-flex gap-2 mt-2 align-center">
-                                                            <MudChip T="string" Size="Size.Small" Color="Color.Success">
-                                                                @item.Calories.ToString("F0") kcal</MudChip>
-                                                                <MudText Typo="Typo.caption" Color="Color.Default">P:
-                                                                    @item.Protein.ToString("F0")g | C: @item.Carbs.ToString("F0")g | F:
-                                                                    @item.Fats.ToString("F0")g</MudText>
-                                                                </div>
-                                                            </MudPaper>
-                                                        </MudItem>
+                                                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                                                   StartIcon="@Icons.Material.Filled.Restaurant"
+                                                                   OnClick="@(() => EatPlanMealAsync(item.RecipeId.Value, GetMealDisplayTitle(item)))"
+                                                                   Disabled="@isEatingMeal">
+                                                            Eat Food
+                                                        </MudButton>
+                                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                                                   Href="@($"/recipe/{item.RecipeId}")">
+                                                            View recipe
+                                                        </MudButton>
                                                     }
-                                                </MudGrid>
-                                            </MudCard>
-                                        }
-                                    </MudStack>
-                                }
-                            </MudPaper>
-                        </MudItem>
-                    </MudGrid>
-                </MudContainer>
+                                                    else if (!string.IsNullOrWhiteSpace(item.ExternalUrl))
+                                                    {
+                                                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                                                   StartIcon="@Icons.Material.Filled.Restaurant"
+                                                                   OnClick="@(() => EatExternalPlanMealAsync(item))" Disabled="@isEatingMeal">
+                                                            Eat Food
+                                                        </MudButton>
+                                                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small"
+                                                                   Href="@item.ExternalUrl" Target="_blank"
+                                                                   StartIcon="@Icons.Material.Filled.OpenInNew">
+                                                            Open recipe
+                                                        </MudButton>
+                                                    }
+                                                </MudStack>
+                                            </MudPaper>
+                                        </MudItem>
+                                    }
+                                </MudGrid>
+                            </MudCard>
+                        }
+                    </MudStack>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
 
 @code {
     private List<RecipeModel> recipes = new();
@@ -160,6 +198,7 @@
 
     private bool isSubmitting;
     private bool isDeleting;
+    private bool isEatingMeal;
 
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -244,10 +283,12 @@
                 Snackbar.Add(string.IsNullOrWhiteSpace(errorText) ? "Could not save the meal plan." : $"Could not save the meal plan: {errorText}", Severity.Error);
             }
         }
-        finally { isSubmitting = false; }
+        finally
+        {
+            isSubmitting = false;
+        }
     }
 
-    // Funcția nouă, curată, pentru ștergerea directă
     private async Task DeletePlanAsync(Guid planId)
     {
         isDeleting = true;
@@ -257,7 +298,6 @@
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("Meal plan deleted successfully.", Severity.Success);
-                // Reîncărcăm lista ca să dispară de pe ecran
                 await LoadMealPlans();
             }
             else
@@ -275,6 +315,76 @@
         }
     }
 
+    private async Task EatPlanMealAsync(Guid recipeId, string title)
+    {
+        isEatingMeal = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/DailyLog/log-meal", new { RecipeId = recipeId });
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"Logged {title}.", Severity.Success);
+            }
+            else if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                Snackbar.Add("Please log in again to track meals.", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Could not log the meal.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not log the meal: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isEatingMeal = false;
+        }
+    }
+
+    private async Task EatExternalPlanMealAsync(MealPlanItem item)
+    {
+        isEatingMeal = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/DailyLog/log-external-meal", new
+            {
+                Title = GetMealDisplayTitle(item),
+                ExternalUrl = item.ExternalUrl,
+                Calories = item.Calories,
+                Protein = item.Protein,
+                Carbs = item.Carbs,
+                Fats = item.Fats
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"Logged {GetMealDisplayTitle(item)}.", Severity.Success);
+            }
+            else if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                Snackbar.Add("Please log in again to track meals.", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Could not log the meal.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not log the meal: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isEatingMeal = false;
+        }
+    }
+
+    private static string GetMealDisplayTitle(MealPlanItem item)
+        => item.Recipe?.Title ?? item.ExternalTitle ?? item.MealType.ToString();
+
     private sealed class CreateMealPlanRequest
     {
         public DateTime Date { get; set; }
@@ -290,6 +400,7 @@
             MealType = mealType;
             RecipeId = recipeId;
         }
+
         public MealType MealType { get; set; }
         public Guid? RecipeId { get; set; }
     }

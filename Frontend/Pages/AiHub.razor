@@ -306,6 +306,7 @@ AiRecommendationRequestModel(recommendationLimit, recommendationSearchQuery, use
                         {
                             MealType = Enum.Parse<MealType>(item.MealType, ignoreCase: true),
                             RecipeId = item.RecipeId,
+                            Title = item.Title,
                             ExternalTitle = item.RecipeId == null ? item.Title : null,
                             ExternalUrl = item.ExternalUrl,
                             Calories = item.Calories,
@@ -349,6 +350,7 @@ AiRecommendationRequestModel(recommendationLimit, recommendationSearchQuery, use
     {
         public MealType MealType { get; set; }
         public Guid? RecipeId { get; set; }
+        public string? Title { get; set; }
         public string? ExternalTitle { get; set; }
         public string? ExternalUrl { get; set; }
         public float Calories { get; set; }

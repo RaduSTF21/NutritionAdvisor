@@ -43,7 +43,7 @@ public class AIController : ControllerBase
                && user.SubscriptionStatus == SubscriptionStatus.Active;
     }
 
-    private async Task<(string? Objective, List<string> Allergies, List<string> Disliked, List<AiRecipeDto> Recipes)> GetUserContextAsync(Guid userId)
+    private async Task<(string? Objective, List<string> Allergies, List<string> Disliked, List<AiRecipeDto> Recipes, double? WeightKg, double? HeightCm, int? Age, string? Gender, string? DietType, List<string> PreferredCuisines)> GetUserContextAsync(Guid userId)
     {
         var profile = await _userProfileRepository.GetByUserIdAsync(userId);
         var objective = string.IsNullOrWhiteSpace(profile?.Objective)
@@ -78,7 +78,17 @@ public class AIController : ControllerBase
             r.Level.ToString()
         )).ToList();
 
-        return (objective, allergyNames, disliked, availableRecipes);
+        return (
+            objective,
+            allergyNames,
+            disliked,
+            availableRecipes,
+            profile?.Weight > 0 ? profile.Weight : null,
+            profile?.Height > 0 ? profile.Height : null,
+            profile?.Age > 0 ? profile.Age : null,
+            string.IsNullOrWhiteSpace(profile?.Gender) ? null : profile.Gender,
+            preferences?.DietType.ToString(),
+            preferences?.PreferredCuisines ?? new List<string>());
     }
 
     [HttpPost("recommend-recipes")]
@@ -127,7 +137,13 @@ public class AIController : ControllerBase
             request.Days,
             context.Allergies,
             context.Disliked,
-            context.Recipes
+            context.Recipes,
+            context.WeightKg,
+            context.HeightCm,
+            context.Age,
+            context.Gender,
+            context.DietType,
+            context.PreferredCuisines
         );
 
         var result = await _aiService.GenerateMealPlanAsync(aiRequest);

@@ -53,18 +53,21 @@ public class CreateMealPlanCommandHandler : IRequestHandler<CreateMealPlanComman
                 var recipe = await _recipeRepository.GetByIdAsync(item.RecipeId.Value, cancellationToken);
                 if (recipe == null)
                 {
-                    throw new InvalidOperationException($"Recipe {item.RecipeId} was not found.");
+                    planItem.ExternalTitle = item.ExternalTitle ?? item.Title ?? "External recipe";
+                    planItem.ExternalUrl = item.ExternalUrl;
                 }
+                else
+                {
+                    planItem.RecipeId = recipe.Id;
+                    planItem.Recipe = recipe;
 
-                planItem.RecipeId = recipe.Id;
-                planItem.Recipe = recipe;
-
-                // Fallback dacă AI-ul sau frontend-ul nu trimit calorii valide
-                if (planItem.Calories == 0) planItem.Calories = recipe.TotalCalories;
+                    // Fallback dacă AI-ul sau frontend-ul nu trimit calorii valide
+                    if (planItem.Calories == 0) planItem.Calories = recipe.TotalCalories;
+                }
             }
             else
             {
-                planItem.ExternalTitle = item.ExternalTitle;
+                planItem.ExternalTitle = item.ExternalTitle ?? item.Title ?? "External recipe";
                 planItem.ExternalUrl = item.ExternalUrl;
             }
 
