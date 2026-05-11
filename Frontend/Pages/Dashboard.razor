@@ -137,80 +137,93 @@
 
     private async Task DeleteMeal(Guid mealId)
     {
-    
         var response = await Http.DeleteAsync($"api/meals/{mealId}");
 
-        if (response.IsSuccessStatusCode)
+        if (response.IsSuccessStatusCode && todayLog?.Meals != null)
         {
-            if (todayLog != null && todayLog.Meals != null)
-            {
-                todayLog.Meals = todayLog.Meals
-                    .Where(m => m.Id != mealId)
-                    .ToList();
-            }
+            todayLog.Meals = todayLog.Meals.Where(m => m.Id != mealId).ToList();
         }
-        else
+        else if (!response.IsSuccessStatusCode)
         {
             Console.WriteLine("Nu am putut șterge masa din baza de date.");
         }
     }
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
-        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
-        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
 
         if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
         {
-            try
-            {
-                var profileResponse = await Http.GetAsync($"api/UserProfile/{userId}");
-                if (profileResponse.StatusCode == HttpStatusCode.Unauthorized || profileResponse.StatusCode == HttpStatusCode.Forbidden)
-                {
-                    Navigation.NavigateTo("/login");
-                    return;
-                }
+            var isProfileLoaded = await LoadUserProfileAsync(userId);
+            if (!isProfileLoaded) return; // Oprește execuția dacă utilizatorul trebuie redirecționat
 
-                if (profileResponse.IsSuccessStatusCode)
-                {
-                    userProfile = await profileResponse.Content.ReadFromJsonAsync<UserProfile>();
-                }
-            }
-            catch { /* Profile might not exist yet */ }
-            try
-            {
-                var dailyLogResponse = await Http.GetAsync($"api/DailyLog/{userId}/{today}");
-                if (dailyLogResponse.StatusCode == HttpStatusCode.Unauthorized || dailyLogResponse.StatusCode ==
-HttpStatusCode.Forbidden)
-                {
-                    Navigation.NavigateTo("/login");
-                    return;
-                }
-
-                if (dailyLogResponse.StatusCode == HttpStatusCode.NotFound)
-                {
-                    todayLog = null;
-                }
-                else if (dailyLogResponse.IsSuccessStatusCode)
-                {
-                    todayLog = await dailyLogResponse.Content.ReadFromJsonAsync<DailyLog>();
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Eroare la citirea log-ului: {ex.Message}");
-            }
+            var isLogLoaded = await LoadTodayLogAsync(userId);
+            if (!isLogLoaded) return;
         }
 
+        await LoadRecipeCountAsync();
+    }
+
+    private async Task<bool> LoadUserProfileAsync(Guid userId)
+    {
+        try
+        {
+            var response = await Http.GetAsync($"api/UserProfile/{userId}");
+            if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                Navigation.NavigateTo("/login");
+                return false;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                userProfile = await response.Content.ReadFromJsonAsync<UserProfile>();
+            }
+        }
+        catch { /* Profile might not exist yet */ }
+
+        return true;
+    }
+
+    private async Task<bool> LoadTodayLogAsync(Guid userId)
+    {
+        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        try
+        {
+            var response = await Http.GetAsync($"api/DailyLog/{userId}/{today}");
+            if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                Navigation.NavigateTo("/login");
+                return false;
+            }
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                todayLog = null;
+            }
+            else if (response.IsSuccessStatusCode)
+            {
+                todayLog = await response.Content.ReadFromJsonAsync<DailyLog>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Eroare la citirea log-ului: {ex.Message}");
+        }
+
+        return true;
+    }
+
+    private async Task LoadRecipeCountAsync()
+    {
         try
         {
             var recipes = await Http.GetFromJsonAsync<List<RecipeModel>>("api/Recipes");
             recipeCount = recipes?.Count ?? 0;
         }
         catch { /* API might be offline */ }
-
-        
     }
 
     private double CalculateBmi()
@@ -222,7 +235,6 @@ HttpStatusCode.Forbidden)
 
     private string GetBmiStatus(double bmi)
     {
-        // Am folosit IF-uri clasice pentru a evita confuzia parserului Razor cu simbolul '<'
         if (bmi <= 0) return "N/A";
         if (bmi < 18.5) return "Underweight";
         if (bmi < 25) return "Healthy Weight";
@@ -231,7 +243,6 @@ HttpStatusCode.Forbidden)
     }
 
     private Color GetBmiColor(double bmi) => (bmi >= 18.5 && bmi < 25) ? Color.Success : Color.Error;
-
 
     private Severity GetBmiSeverity(double bmi) => (bmi >= 18.5 && bmi < 25) ? Severity.Success : Severity.Warning;
 }
