@@ -57,19 +57,16 @@ public class AuthController : ControllerBase
                 claims.Add(new Claim("subscription_expires_at", result.SubscriptionEndAt.Value.ToString("O")));
             }
 
-            var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY");
-            if (string.IsNullOrWhiteSpace(jwtKey))
+            // ASP.NET mapează automat variabila Jwt__Key din .env la acest camp
+            var jwtKey = _configuration["Jwt:Key"];
+
+            // Validare strictă
+            if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32 || jwtKey.StartsWith("REPLACE_WITH"))
             {
-                jwtKey = _configuration["Jwt:Key"];
+                throw new InvalidOperationException("A secure JWT key is not configured in the environment.");
             }
 
-            if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.StartsWith("REPLACE_WITH_", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("JWT key is not configured.");
-            }
-
-            var key = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtKey));
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(

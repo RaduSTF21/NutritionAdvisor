@@ -258,56 +258,62 @@
     private async Task LoadProfile()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var userClaim = authState.User;
-        if (userClaim.Identity?.IsAuthenticated == true)
-        {
-            var userIdClaim = userClaim.FindFirst(ClaimTypes.NameIdentifier);
-            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
-            {
-                try
-                {
-                    var response = await Http.GetAsync($"api/UserProfile/{userId}");
-                    if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
-                    {
-                        await HandleAuthorizationFailure();
-                        return;
-                    }
+        if (authState.User.Identity?.IsAuthenticated != true) return;
 
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var existing = await response.Content.ReadFromJsonAsync<UserProfile>();
-                        if (existing != null)
-                        {
-                            user = existing;
-                            userProfile = existing;
-                        }
-                        else
-                        {
-                            editing = true;
-                        }
-                    }
-                    else
-                    {
-                        editing = true;
-                    }
-                }
-                catch
-                {
-                    editing = true;
-                }
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId)) return;
+
+        var response = await FetchUserProfileDataAsync(userId);
+        if (response == null) return;
+
+        await ProcessProfileResponseAsync(response);
+    }
+
+    private async Task<HttpResponseMessage?> FetchUserProfileDataAsync(Guid userId)
+    {
+        try
+        {
+            var response = await Http.GetAsync($"api/UserProfile/{userId}");
+            if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                await HandleAuthorizationFailure();
+                return null;
+            }
+            return response;
+        }
+        catch
+        {
+            editing = true;
+            return null;
+        }
+    }
+
+    private async Task ProcessProfileResponseAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            var existing = await response.Content.ReadFromJsonAsync<UserProfile>();
+            if (existing != null)
+            {
+                user = existing;
+                userProfile = existing;
+                return;
             }
         }
+        
+        editing = true; // Fallback to editing if not successful or null
     }
 
     private async Task SaveProfile()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var userClaim = authState.User;
-        var userIdClaim = userClaim.FindFirst(ClaimTypes.NameIdentifier);
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+        
         if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
         {
             user.UserId = userId;
             var response = await Http.PostAsJsonAsync("api/userprofile", user);
+            
             if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
             {
                 await HandleAuthorizationFailure();
@@ -320,10 +326,11 @@
                 Snackbar.Add("Profile saved successfully.", Severity.Success);
                 await LoadProfile();
                 await LoadNutritionOverview();
-                return;
             }
-
-            Snackbar.Add("Profile could not be saved.", Severity.Error);
+            else
+            {
+                Snackbar.Add("Profile could not be saved.", Severity.Error);
+            }
         }
     }
 
@@ -359,8 +366,8 @@
         var response = await Http.PostAsJsonAsync("api/Allergies", newAllergy);
         if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
         {
-            await
-HandleAuthorizationFailure(); return;
+            await HandleAuthorizationFailure();
+            return;
         }
 
         if (response.IsSuccessStatusCode)
@@ -377,8 +384,8 @@ HandleAuthorizationFailure(); return;
         var response = await Http.DeleteAsync($"api/Allergies/{id}");
         if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
         {
-            await
-HandleAuthorizationFailure(); return;
+            await HandleAuthorizationFailure();
+            return;
         }
 
         if (response.IsSuccessStatusCode)
@@ -396,8 +403,8 @@ HandleAuthorizationFailure(); return;
             var response = await Http.GetAsync("api/FoodPreferences");
             if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
             {
-                await
-HandleAuthorizationFailure(); return;
+                await HandleAuthorizationFailure();
+                return;
             }
 
             if (response.IsSuccessStatusCode)
@@ -422,11 +429,12 @@ HandleAuthorizationFailure(); return;
         var response = await Http.PostAsJsonAsync("api/FoodPreferences", prefModel);
         if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
         {
-            await
-HandleAuthorizationFailure(); return;
+            await HandleAuthorizationFailure();
+            return;
         }
 
-        if (response.IsSuccessStatusCode) Snackbar.Add("Preferences saved.", Severity.Success); else Snackbar.Add("Could not save preferences.", Severity.Error);
+        if (response.IsSuccessStatusCode) Snackbar.Add("Preferences saved.", Severity.Success);
+        else Snackbar.Add("Could not save preferences.", Severity.Error);
     }
 
     private List<string> ParseCsv(string input) => input.Split(',', StringSplitOptions.TrimEntries |
@@ -441,19 +449,17 @@ StringSplitOptions.RemoveEmptyEntries).ToList();
     private async Task LoadNutritionOverview()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var userPrincipal = authState.User;
-        var userIdClaim = userPrincipal.FindFirst(ClaimTypes.NameIdentifier);
-        if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
-        {
-            return;
-        }
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId)) return;
 
         dailyCalorieTarget = CalculateDailyCaloriesTarget();
 
         var dates = Enumerable.Range(0, 7).Select(offset => DateTime.UtcNow.Date.AddDays(-offset)).ToList();
-        var requests = dates
-            .Select(date => new { Date = date, Task = Http.GetAsync($"api/DailyLog/{userId}/{date:yyyy-MM-dd}") })
-            .ToList();
+        var requests = dates.Select(date => new
+        {
+            Date = date,
+            Task = Http.GetAsync($"api/DailyLog/{userId}/{date:yyyy-MM-dd}")
+        }).ToList();
 
         await Task.WhenAll(requests.Select(item => item.Task));
 
@@ -470,10 +476,7 @@ StringSplitOptions.RemoveEmptyEntries).ToList();
             if (response.IsSuccessStatusCode)
             {
                 var log = await response.Content.ReadFromJsonAsync<DailyLog>();
-                if (log != null)
-                {
-                    logs.Add(log);
-                }
+                if (log != null) logs.Add(log);
             }
         }
 
@@ -484,7 +487,6 @@ DateTime.UtcNow.AddHours(-24)));
         last7DaysTotals = SumTotals(recentLogs.SelectMany(log => log.Meals));
         todayCalories = todayTotals.Calories;
         
-        // Extract today's meals for display in the table
         var todayLog = recentLogs.FirstOrDefault(log => log.Date.Date == DateTime.UtcNow.Date);
         todayMeals = todayLog?.Meals.OrderByDescending(m => m.EatenAt).ToList() ?? new List<Meal>();
     }
@@ -497,27 +499,16 @@ DateTime.UtcNow.AddHours(-24)));
         if (weight > 0)
         {
             if (objective.Contains("loss") || objective.Contains("cut") || objective.Contains("diet"))
-            {
                 return Math.Clamp(weight * 24, 1600, 2600);
-            }
 
             if (objective.Contains("muscle") || objective.Contains("bulk") || objective.Contains("gain"))
-            {
                 return Math.Clamp(weight * 34, 2200, 3400);
-            }
 
             return Math.Clamp(weight * 30, 1800, 3200);
         }
 
-        if (objective.Contains("loss") || objective.Contains("cut") || objective.Contains("diet"))
-        {
-            return 1800;
-        }
-
-        if (objective.Contains("muscle") || objective.Contains("bulk") || objective.Contains("gain"))
-        {
-            return 2800;
-        }
+        if (objective.Contains("loss") || objective.Contains("cut") || objective.Contains("diet")) return 1800;
+        if (objective.Contains("muscle") || objective.Contains("bulk") || objective.Contains("gain")) return 2800;
 
         return 2200;
     }
@@ -546,16 +537,12 @@ metric.Target <= 0 ? 0 : metric.Value / metric.Target *
 
     private IReadOnlyList<NutritionMetric> BuildNutritionMetrics(NutritionTotals totals, double calorieTarget)
     {
-        var proteinTarget = Math.Max(100, calorieTarget / 20);
-        var carbsTarget = Math.Max(180, calorieTarget / 8);
-        var fatsTarget = Math.Max(50, calorieTarget / 30);
-
         return new List<NutritionMetric>
         {
             new("Calories", totals.Calories, calorieTarget, "kcal", "var(--mud-palette-primary)"),
-            new("Protein", totals.Protein, proteinTarget, "g", "var(--mud-palette-success)"),
-            new("Carbs", totals.Carbs, carbsTarget, "g", "var(--mud-palette-warning)"),
-            new("Fats", totals.Fats, fatsTarget, "g", "var(--mud-palette-error)"),
+            new("Protein", totals.Protein, Math.Max(100, calorieTarget / 20), "g", "var(--mud-palette-success)"),
+            new("Carbs", totals.Carbs, Math.Max(180, calorieTarget / 8), "g", "var(--mud-palette-warning)"),
+            new("Fats", totals.Fats, Math.Max(50, calorieTarget / 30), "g", "var(--mud-palette-error)"),
         };
     }
 
@@ -598,14 +585,14 @@ metric.Target <= 0 ? 0 : metric.Value / metric.Target *
     private class AllergyVm
     {
         public Guid Id { get; set; }
-        public string AllergenName { get; set; } = string.Empty; public
-AllergySeverity SeverityLevel
-        { get; set; }
+        public string AllergenName { get; set; } = string.Empty;
+        public AllergySeverity SeverityLevel { get; set; }
     }
+    
     private class FoodPreferenceVm
     {
-        public DietType DietType { get; set; } = DietType.None; public List<string>
-PreferredCuisines
-        { get; set; } = new(); public List<string> DislikedIngredients { get; set; } = new();
+        public DietType DietType { get; set; } = DietType.None;
+        public List<string> PreferredCuisines { get; set; } = new();
+        public List<string> DislikedIngredients { get; set; } = new();
     }
 }
