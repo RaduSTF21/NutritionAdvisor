@@ -89,8 +89,7 @@ public sealed class InMemoryDailyLogRepository : NutritionAdvisor.Application.In
 
     public Task UpdateAsync(DailyLog dailyLog, CancellationToken ct)
     {
-        _logsById[dailyLog.Id] = dailyLog;
-        return Task.CompletedTask;
+        return AddAsync(dailyLog, ct);
     }
 
     public Task<DailyLog?> GetByMealIdAsync(Guid mealId, CancellationToken ct)
@@ -134,8 +133,7 @@ public sealed class InMemoryRecipeRepository : NutritionAdvisor.Application.Inte
 
     public Task UpdateAsync(NutritionAdvisor.Domain.Entities.Recipe recipe, CancellationToken ct)
     {
-        _recipes[recipe.Id] = recipe;
-        return Task.CompletedTask;
+        return AddAsync(recipe, ct);
     }
 }
 

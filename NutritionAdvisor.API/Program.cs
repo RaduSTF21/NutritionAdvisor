@@ -12,6 +12,17 @@ using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY");
+if (string.IsNullOrWhiteSpace(jwtKey))
+{
+    jwtKey = builder.Configuration["Jwt:Key"];
+}
+
+if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.StartsWith("REPLACE_WITH_", StringComparison.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException("JWT key is not configured. Set JWT_KEY environment variable.");
+}
+
 builder.Services.AddOpenApi();
 
 builder.Services.AddControllers()
@@ -35,7 +46,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+                Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 builder.Services.AddAuthorization(options =>
@@ -130,7 +141,7 @@ using (var scope = app.Services.CreateScope())
     {
         try
         {
-            dbContext.Database.Migrate();
+            await dbContext.Database.MigrateAsync();
             break;
         }
         catch (Exception ex) when (attempt < maxMigrationRetries)
@@ -185,4 +196,4 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-app.Run();
+await app.RunAsync();
