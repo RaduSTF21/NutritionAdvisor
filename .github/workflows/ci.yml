@@ -7,19 +7,84 @@ on:
     branches: [main, develop]
 
 jobs:
-  build:
+  sonarcloud-dotnet:
+    name: Build and Analyze .NET
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # CRITIC: SonarCloud are nevoie de istoricul complet Git pentru a analiza corect
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: "zulu" # CRITIC: Analizatorul Sonar este scris în Java
+
+      - name: Install SonarCloud scanner
+        run: dotnet tool install --global dotnet-sonarscanner
+
+      - name: Begin SonarCloud analysis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        # Modifică RaduSTF21_NutritionAdvisor cu Project Key-ul exact generat de SonarCloud
+        run: |
+          dotnet-sonarscanner begin /k:"RaduSTF21_NutritionAdvisor" /o:"radustf21" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.cs.opencover.reportsPaths="**/TestResults/**/coverage.opencover.xml" /d:sonar.coverage.exclusions="**/*.Tests/**,**/Migrations/**,**/Frontend/wwwroot/**"
+
       - name: Restore
         run: dotnet restore NutritionAdvisor.sln
 
       - name: Build
         run: dotnet build NutritionAdvisor.sln --no-restore --configuration Release
+
+      - name: Test and Collect Coverage
+        run: dotnet test NutritionAdvisor.sln --no-build --configuration Release --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+      - name: End SonarCloud analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+
+  sonarcloud-python:
+    name: Analyze Python AI Service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11" # Versiunea folosită pentru microserviciul tău
+
+      - name: Install dependencies & pytest
+        run: |
+          cd NutritionAdvisor.AI
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run Python tests with coverage
+        run: |
+          cd NutritionAdvisor.AI
+          pytest --cov=. --cov-report=xml
+
+      - name: SonarCloud Scan for Python
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: NutritionAdvisor.AI
+          args: >
+            -Dsonar.projectKey=RaduSTF21_NutritionAdvisor_AI
+            -Dsonar.organization=radustf21
+            -Dsonar.python.coverage.reportPaths=coverage.xml
