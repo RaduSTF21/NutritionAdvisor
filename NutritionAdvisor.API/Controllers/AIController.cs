@@ -175,6 +175,35 @@ public class AIController : ControllerBase
         var result = await _aiService.GetCoachAdviceAsync(aiRequest);
         return Ok(result);
     }
+
+    [HttpPost("prewarm")]
+    public async Task<IActionResult> Prewarm()
+    {
+        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userIdString)) return Unauthorized();
+
+        var userId = Guid.Parse(userIdString);
+        var context = await GetUserContextAsync(userId);
+
+        var aiRequest = new AiMealPlanRequestModel(
+            userId.ToString(),
+            context.Objective,
+            1,
+            context.Allergies,
+            context.Disliked,
+            context.Recipes,
+            context.WeightKg,
+            context.HeightCm,
+            context.Age,
+            context.Gender,
+            context.DietType,
+            context.PreferredCuisines
+        );
+
+        // Best-effort warm-up; do not block if AI service fails
+        await _aiService.PrewarmAsync(aiRequest);
+        return Accepted(new { Message = "Prewarm started" });
+    }
 }
 
 // Modele pentru request-urile venite din Frontend (Blazor)[cite: 2]

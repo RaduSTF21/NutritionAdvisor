@@ -5,6 +5,15 @@
 
 # dotenv files
 .env
+.venv
+ai_env.txt
+ai_mealplan_response.json
+ai_recommend_response.json
+ai_service_logs.txt
+backend_ai_response.json
+Propunere Teme.pdf
+test_ai_end_to_end.sh
+test_ai_extended.sh
 
 # User-specific files
 *.rsuser

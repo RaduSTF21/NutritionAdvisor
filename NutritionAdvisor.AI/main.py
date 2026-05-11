@@ -2,7 +2,7 @@ import os
 import json
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 from typing import List, Optional, Dict, Any, Union
 
@@ -453,7 +453,7 @@ def _generate_meal_plan_days_with_macros(
     prev_recipe_id_for_meal: Dict[str, Optional[str]] = {mt: None for mt in meal_types}
     
     for day_offset in range(days_count):
-        day_date = (datetime.utcnow().date() + timedelta(days=day_offset)).isoformat()
+        day_date = (datetime.now(timezone.utc).date() + timedelta(days=day_offset)).isoformat()
         items = []
         day_cals = 0
         
@@ -814,7 +814,7 @@ def _normalize_meal_plan_item(item: Any) -> Dict[str, Any]:
 def _normalize_meal_plan_day(day: Any) -> Dict[str, Any]:
     if not isinstance(day, dict):
         return {
-            "date": datetime.utcnow().date().isoformat(),
+            "date": datetime.now(timezone.utc).date().isoformat(),
             "title": "Day",
             "description": "",
             "calories": 1500,
@@ -826,7 +826,7 @@ def _normalize_meal_plan_day(day: Any) -> Dict[str, Any]:
     total_cals = sum(_safe_int(it.get("calories", 500), 500) for it in normalized_items)
     
     return {
-        "date": str(day.get("date", datetime.utcnow().date().isoformat())),
+        "date": str(day.get("date", datetime.now(timezone.utc).date().isoformat())),
         "title": str(day.get("title", "Day")),
         "description": str(day.get("description", "")),
         "calories": _safe_int(day.get("calories", total_cals), total_cals),
@@ -1038,7 +1038,7 @@ async def generate_meal_plan(request: MealPlanRequest, debug: bool = Query(False
         data["days"] = _enrich_meal_plan_external_urls(normalized_days, request.objective)
         
         for i, day in enumerate(data.get("days") or []):
-            day["date"] = (datetime.utcnow().date() + timedelta(days=i)).isoformat()
+            day["date"] = (datetime.now(timezone.utc).date() + timedelta(days=i)).isoformat()
         
         _store_cached_gemini_response(cache_key, data)
         return data
@@ -1110,3 +1110,49 @@ async def coach(request: CoachRequest, debug: bool = Query(False)) -> Dict[str, 
     except Exception as e:
         print(f"Gemini coach failed: {e}")
         return fallback
+
+
+@app.post("/prewarm")
+async def prewarm(request: MealPlanRequest) -> Dict[str, Any]:
+    """Best-effort warm-up: call Gemini for meal-plan and recommendations to populate cache."""
+    try:
+        # Warm meal-plan cache
+        compact_payload = _compact_meal_plan_payload(request)
+        compact_payload["days"] = max(1, min(request.days, 7))
+        cache_key = _compact_gemini_cache_key("meal-plan", compact_payload)
+        try:
+            prompt = _build_gemini_prompt("meal-plan", compact_payload)
+            gen_config = {"response_mime_type": "application/json"}
+            resp = await _genai_generate_with_retries(prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
+            parsed = _parse_json_or_fallback(getattr(resp, "text", None), _fallback_meal_plan(request))
+            if isinstance(parsed, dict):
+                _store_cached_gemini_response(cache_key, parsed)
+        except Exception as e:
+            print(f"Prewarm meal-plan failed: {e}")
+
+        # Warm recommendations cache (use compact recommendation payload)
+        try:
+            user_profile = UserProfileAI(
+                user_id=request.user_id,
+                objective=request.objective,
+                search_query=None,
+                use_internet_search=False,
+                allergies=request.allergies or [],
+                disliked_ingredients=request.disliked_ingredients or [],
+                limit=3,
+                available_recipes=request.available_recipes or []
+            )
+            rec_payload = _compact_recommendation_payload(user_profile)
+            rec_cache_key = _compact_gemini_cache_key("recommend", rec_payload)
+            rec_prompt = _build_gemini_prompt("recommend", rec_payload)
+            gen_config = {"response_mime_type": "application/json"}
+            rresp = await _genai_generate_with_retries(rec_prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
+            rparsed = _parse_json_or_fallback(getattr(rresp, "text", None), _fallback_recommendations(user_profile))
+            if isinstance(rparsed, dict):
+                _store_cached_gemini_response(rec_cache_key, rparsed)
+        except Exception as e:
+            print(f"Prewarm recommend failed: {e}")
+
+    except Exception as e:
+        print(f"Prewarm overall failed: {e}")
+    return {"status": "ok"}

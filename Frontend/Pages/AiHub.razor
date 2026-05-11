@@ -196,6 +196,21 @@
         }
 
         await LoadSubscriptionAsync();
+        // Trigger AI service pre-warm in background to reduce first-request latency
+        _ = PrewarmAiAsync();
+    }
+
+    private async Task PrewarmAiAsync()
+    {
+        try
+        {
+            // Fire-and-forget call to backend which will warm the AI/cache for this user
+            await Http.PostAsync("api/ai/prewarm", null);
+        }
+        catch
+        {
+            // ignore - prewarm is best-effort
+        }
     }
 
     private async Task LoadSubscriptionAsync()

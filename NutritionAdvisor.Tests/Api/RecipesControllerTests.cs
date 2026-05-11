@@ -6,6 +6,7 @@ using NutritionAdvisor.Application.Recipes.Commands.CreateRecipe;
 using NutritionAdvisor.Application.Recipes.Commands.DeleteRecipe;
 using NutritionAdvisor.Application.Recipes.Commands.UpdateRecipe;
 using NutritionAdvisor.Application.Recipes.Queries.GetAllRecipes;
+using NutritionAdvisor.Application.Recipes.Queries.GetRecipesByFilter;
 using NutritionAdvisor.Application.Recipes.Queries.GetRecipesById;
 using NutritionAdvisor.Domain.Enums;
 using NutritionAdvisor.Domain.Entities;
@@ -37,6 +38,56 @@ public class RecipesControllerTests
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Same(recipes, ok.Value);
+    }
+
+    [Fact]
+    public async Task GetFiltered_ReturnsOk_WithQueryParameters()
+    {
+        var mediator = new Mock<IMediator>();
+        var recipes = new[]
+        {
+            new Recipe
+            {
+                Id = Guid.NewGuid(),
+                Title = "Filtered Salad",
+                Instructions = "Mix",
+                Level = Difficulty.Easy
+            }
+        };
+
+        mediator.Setup(m => m.Send(It.IsAny<GetRecipesByFilterQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(recipes);
+
+        var controller = new RecipesController(mediator.Object);
+
+        var result = await controller.GetFiltered("salad", "fresh", Difficulty.Easy);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Same(recipes, ok.Value);
+        mediator.Verify(m => m.Send(It.Is<GetRecipesByFilterQuery>(query => query.SearchTerm == "salad" && query.Tag == "fresh" && query.Level == Difficulty.Easy), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetById_ReturnsOk_WhenRecipeExists()
+    {
+        var mediator = new Mock<IMediator>();
+        var recipe = new Recipe
+        {
+            Id = Guid.NewGuid(),
+            Title = "Salad",
+            Instructions = "Mix",
+            Level = Difficulty.Easy
+        };
+
+        mediator.Setup(m => m.Send(It.IsAny<GetRecipeByIdQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(recipe);
+
+        var controller = new RecipesController(mediator.Object);
+
+        var result = await controller.GetById(recipe.Id);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Same(recipe, ok.Value);
     }
 
     [Fact]
@@ -85,6 +136,20 @@ public class RecipesControllerTests
     }
 
     [Fact]
+    public async Task Update_ReturnsNotFound_WhenUpdateFails()
+    {
+        var mediator = new Mock<IMediator>();
+        mediator.Setup(m => m.Send(It.IsAny<UpdateRecipeCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var controller = new RecipesController(mediator.Object);
+
+        var result = await controller.Update(Guid.NewGuid(), new UpdateRecipeCommand());
+
+        Assert.IsType<NotFoundResult>(result);
+    }
+
+    [Fact]
     public async Task Delete_ReturnsNotFound_WhenDeleteFails()
     {
         var mediator = new Mock<IMediator>();
@@ -96,5 +161,19 @@ public class RecipesControllerTests
         var result = await controller.Delete(Guid.NewGuid());
 
         Assert.IsType<NotFoundResult>(result);
+    }
+
+    [Fact]
+    public async Task Delete_ReturnsNoContent_WhenDeleteSucceeds()
+    {
+        var mediator = new Mock<IMediator>();
+        mediator.Setup(m => m.Send(It.IsAny<DeleteRecipeCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var controller = new RecipesController(mediator.Object);
+
+        var result = await controller.Delete(Guid.NewGuid());
+
+        Assert.IsType<NoContentResult>(result);
     }
 }

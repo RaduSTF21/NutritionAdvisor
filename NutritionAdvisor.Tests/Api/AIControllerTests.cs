@@ -257,6 +257,277 @@ public class AIControllerTests
         pythonAiService.Verify(service => service.GenerateMealPlanAsync(It.IsAny<AiMealPlanRequestModel>()), Times.Once);
     }
 
+    [Fact]
+    public async Task RecommendRecipes_ReturnsUnauthorized_WhenUserIsMissing()
+    {
+        var controller = CreateUnauthenticatedController(
+            new Mock<IUserRepository>().Object,
+            new Mock<IRecipeRepository>().Object,
+            new Mock<IUserProfileRepository>().Object,
+            new Mock<IFoodPreferenceRepository>().Object,
+            new Mock<IAllergyRepository>().Object,
+            new Mock<IPythonAiService>().Object);
+
+        var result = await controller.RecommendRecipes(new FrontendRecommendationRequest(5));
+
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task GenerateMealPlan_ReturnsForbidden_WhenUserIsNotPremium()
+    {
+        var userId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(repository => repository.GetByIdAsync(userId))
+            .ReturnsAsync(new User
+            {
+                UserId = userId,
+                SubscriptionPlan = SubscriptionPlan.Free,
+                SubscriptionStatus = SubscriptionStatus.Inactive
+            });
+
+        var controller = CreateController(
+            userId,
+            "Free",
+            "Inactive",
+            DateTime.UtcNow,
+            userRepository.Object,
+            new Mock<IRecipeRepository>().Object,
+            new Mock<IUserProfileRepository>().Object,
+            new Mock<IFoodPreferenceRepository>().Object,
+            new Mock<IAllergyRepository>().Object,
+            new Mock<IPythonAiService>().Object);
+
+        var result = await controller.GenerateMealPlan(new FrontendMealPlanRequest(3));
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task AskCoach_ReturnsPremiumCoachAdvice()
+    {
+        var userId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(repository => repository.GetByIdAsync(userId))
+            .ReturnsAsync(new User
+            {
+                UserId = userId,
+                SubscriptionPlan = SubscriptionPlan.Premium,
+                SubscriptionStatus = SubscriptionStatus.Active,
+                SubscriptionEndAt = DateTime.UtcNow.AddDays(7)
+            });
+
+        var profileRepository = new Mock<IUserProfileRepository>();
+        profileRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserProfile
+            {
+                UserId = userId,
+                Name = "Radu",
+                Objective = "Muscle Gain"
+            });
+
+        var preferenceRepository = new Mock<IFoodPreferenceRepository>();
+        preferenceRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodPreference
+            {
+                UserId = userId,
+                DislikedIngredients = new List<string>()
+            });
+
+        var allergyRepository = new Mock<IAllergyRepository>();
+        allergyRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Allergy>());
+
+        AiCoachRequestModel? capturedRequest = null;
+        var pythonAiService = new Mock<IPythonAiService>();
+        pythonAiService.Setup(service => service.GetCoachAdviceAsync(It.IsAny<AiCoachRequestModel>()))
+            .Callback<AiCoachRequestModel>(request => capturedRequest = request)
+            .ReturnsAsync(new AiCoachResponseModel(
+                userId,
+                "Premium",
+                "Eat more protein",
+                new List<string> { "Add protein to each meal" }));
+
+        var controller = CreateController(
+            userId,
+            "Premium",
+            "Active",
+            DateTime.UtcNow.AddDays(7),
+            userRepository.Object,
+            new Mock<IRecipeRepository>().Object,
+            profileRepository.Object,
+            preferenceRepository.Object,
+            allergyRepository.Object,
+            pythonAiService.Object);
+
+        var result = await controller.AskCoach(new FrontendCoachRequest("How do I improve?", "Context"));
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var payload = Assert.IsType<AiCoachResponseModel>(ok.Value);
+
+        Assert.Equal("Premium", payload.Mode);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("How do I improve?", capturedRequest!.Message);
+        Assert.Equal("Context", capturedRequest.Context);
+        pythonAiService.Verify(service => service.GetCoachAdviceAsync(It.IsAny<AiCoachRequestModel>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AskCoach_ReturnsForbidden_WhenUserIsNotPremium()
+    {
+        var userId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(repository => repository.GetByIdAsync(userId))
+            .ReturnsAsync(new User
+            {
+                UserId = userId,
+                SubscriptionPlan = SubscriptionPlan.Free,
+                SubscriptionStatus = SubscriptionStatus.Inactive
+            });
+
+        var controller = CreateController(
+            userId,
+            "Free",
+            "Inactive",
+            DateTime.UtcNow,
+            userRepository.Object,
+            new Mock<IRecipeRepository>().Object,
+            new Mock<IUserProfileRepository>().Object,
+            new Mock<IFoodPreferenceRepository>().Object,
+            new Mock<IAllergyRepository>().Object,
+            new Mock<IPythonAiService>().Object);
+
+        var result = await controller.AskCoach(new FrontendCoachRequest("Question?", null));
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Prewarm_ReturnsAccepted_AndUsesDefaultProfileContext()
+    {
+        var userId = Guid.Parse("88888888-8888-8888-8888-888888888888");
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(repository => repository.GetByIdAsync(userId))
+            .ReturnsAsync(new User
+            {
+                UserId = userId,
+                SubscriptionPlan = SubscriptionPlan.Free,
+                SubscriptionStatus = SubscriptionStatus.Active
+            });
+
+        var profileRepository = new Mock<IUserProfileRepository>();
+        profileRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserProfile?)null);
+
+        var preferenceRepository = new Mock<IFoodPreferenceRepository>();
+        preferenceRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FoodPreference?)null);
+
+        var allergyRepository = new Mock<IAllergyRepository>();
+        allergyRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Allergy>());
+
+        AiMealPlanRequestModel? capturedRequest = null;
+        var pythonAiService = new Mock<IPythonAiService>();
+        pythonAiService.Setup(service => service.PrewarmAsync(It.IsAny<AiMealPlanRequestModel>()))
+            .Callback<AiMealPlanRequestModel>(request => capturedRequest = request)
+            .Returns(Task.CompletedTask);
+
+        var controller = CreateController(
+            userId,
+            "Free",
+            "Active",
+            DateTime.UtcNow,
+            userRepository.Object,
+            new Mock<IRecipeRepository>().Object,
+            profileRepository.Object,
+            preferenceRepository.Object,
+            allergyRepository.Object,
+            pythonAiService.Object);
+
+        var result = await controller.Prewarm();
+
+        var accepted = Assert.IsType<AcceptedResult>(result);
+        Assert.Equal(202, accepted.StatusCode);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(1, capturedRequest!.Days);
+        Assert.Equal("General Health Improvement", capturedRequest.Objective);
+        Assert.Equal(userId.ToString(), capturedRequest.UserId);
+        pythonAiService.Verify(service => service.PrewarmAsync(It.IsAny<AiMealPlanRequestModel>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RecommendRecipes_UsesTrimmedSearchQuery_WhenProvided()
+    {
+        var userId = Guid.Parse("99999999-9999-9999-9999-999999999999");
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(repository => repository.GetByIdAsync(userId))
+            .ReturnsAsync(new User
+            {
+                UserId = userId,
+                SubscriptionPlan = SubscriptionPlan.Free,
+                SubscriptionStatus = SubscriptionStatus.Inactive
+            });
+
+        var recipeRepository = new Mock<IRecipeRepository>();
+        recipeRepository.Setup(repository => repository.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { CreateRecipe("Salată", 250, "salată") });
+
+        var profileRepository = new Mock<IUserProfileRepository>();
+        profileRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserProfile
+            {
+                UserId = userId,
+                Name = "Radu",
+                Objective = "Weight Loss"
+            });
+
+        var preferenceRepository = new Mock<IFoodPreferenceRepository>();
+        preferenceRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodPreference
+            {
+                UserId = userId,
+                DislikedIngredients = new List<string>()
+            });
+
+        var allergyRepository = new Mock<IAllergyRepository>();
+        allergyRepository.Setup(repository => repository.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Allergy>());
+
+        AiRecommendationRequestModel? capturedRequest = null;
+        var pythonAiService = new Mock<IPythonAiService>();
+        pythonAiService.Setup(service => service.GetRecommendationsAsync(It.IsAny<AiRecommendationRequestModel>()))
+            .Callback<AiRecommendationRequestModel>(request => capturedRequest = request)
+            .ReturnsAsync(new AiRecommendationResponseModel(
+                userId,
+                "Free",
+                new List<AiRecommendationItemModel>
+                {
+                    new("1", "Salată", "Meal free", new List<string> { "salată" }, "Selected locally.", false, 25)
+                }));
+
+        var controller = CreateController(
+            userId,
+            "Free",
+            "Inactive",
+            DateTime.UtcNow,
+            userRepository.Object,
+            recipeRepository.Object,
+            profileRepository.Object,
+            preferenceRepository.Object,
+            allergyRepository.Object,
+            pythonAiService.Object);
+
+        var result = await controller.RecommendRecipes(new FrontendRecommendationRequest(5, "  Custom Objective  "));
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<AiRecommendationResponseModel>(ok.Value);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("Custom Objective", capturedRequest!.Objective);
+    }
+
     private static AIController CreateController(
         Guid userId,
         string subscriptionPlan,
@@ -288,6 +559,34 @@ public class AIControllerTests
                         new Claim("subscription_status", subscriptionStatus),
                         new Claim("subscription_expires_at", expiresAt.ToString("O"))
                     }, "Bearer"))
+                }
+            }
+        };
+
+        return controller;
+    }
+
+    private static AIController CreateUnauthenticatedController(
+        IUserRepository userRepository,
+        IRecipeRepository recipeRepository,
+        IUserProfileRepository profileRepository,
+        IFoodPreferenceRepository preferenceRepository,
+        IAllergyRepository allergyRepository,
+        IPythonAiService pythonAiService)
+    {
+        var controller = new AIController(
+            pythonAiService,
+            userRepository,
+            profileRepository,
+            allergyRepository,
+            preferenceRepository,
+            recipeRepository)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity())
                 }
             }
         };
