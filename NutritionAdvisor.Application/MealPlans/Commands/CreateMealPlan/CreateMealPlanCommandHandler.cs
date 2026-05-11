@@ -62,7 +62,7 @@ public class CreateMealPlanCommandHandler : IRequestHandler<CreateMealPlanComman
                     planItem.Recipe = recipe;
 
                     // Fallback dacă AI-ul sau frontend-ul nu trimit calorii valide
-                    if (planItem.Calories == 0) planItem.Calories = recipe.TotalCalories;
+                    if (Math.Abs(planItem.Calories) < 0.0001f) planItem.Calories = recipe.TotalCalories;
                 }
             }
             else

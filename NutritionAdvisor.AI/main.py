@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Tuple
 
 # --- IMPORT GUARD ---
 try:
@@ -27,6 +27,9 @@ GEMINI_API_KEYS = [k.strip() for k in _raw_keys.split(",") if k.strip()]
 GEMINI_MODEL = str(os.getenv("GEMINI_MODEL", "gemini-2.0-flash"))
 GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "0"))
 GEMINI_CACHE_TTL_SECONDS = int(os.getenv("GEMINI_CACHE_TTL_SECONDS", "600"))
+
+WEIGHT_LOSS_OBJECTIVE = "weight loss"
+JSON_MIME_TYPE = "application/json"
 
 _AI_SEMAPHORE: Optional[asyncio.Semaphore] = None
 try:
@@ -159,7 +162,7 @@ def _objective_score(recipe: Dict[str, Any], objective: Optional[str]) -> int:
     if not objective_text:
         return 0
     keywords: Dict[str, List[str]] = {
-        "weight loss": ["light", "salad", "low calorie", "protein", "fit"],
+        WEIGHT_LOSS_OBJECTIVE: ["light", "salad", "low calorie", "protein", "fit"],
         "muscle": ["protein", "chicken", "beef", "egg", "tuna"],
         "healthy": ["salad", "vegetable", "bowl", "grilled", "fresh"],
         "vegan": ["vegan", "tofu", "lentil", "beans", "chickpea"],
@@ -229,15 +232,19 @@ def _search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[str, An
         meals = payload.get("meals") or []
         results: List[Dict[str, Any]] = []
         for m in meals[:limit]:
-            ingredients = []
-            for i in range(1, 21):
-                ing = m.get(f"strIngredient{i}")
-                measure = m.get(f"strMeasure{i}")
-                if ing and ing.strip():
-                    if measure and measure.strip():
-                        ingredients.append(f"{measure.strip()} {ing.strip()}")
-                    else:
-                        ingredients.append(ing.strip())
+            def _parse_ingredient_list(raw: Dict[str, Any]) -> List[str]:
+                ing_list: List[str] = []
+                for i in range(1, 21):
+                    ing = raw.get(f"strIngredient{i}")
+                    measure = raw.get(f"strMeasure{i}")
+                    if ing and ing.strip():
+                        if measure and measure.strip():
+                            ing_list.append(f"{measure.strip()} {ing.strip()}")
+                        else:
+                            ing_list.append(ing.strip())
+                return ing_list
+
+            ingredients = _parse_ingredient_list(m)
 
             source_url = m.get("strSource")
             youtube_url = m.get("strYoutube")
@@ -412,169 +419,188 @@ def _enrich_meal_plan_external_urls(days: List[Dict[str, Any]], objective: Optio
 
     return enriched_days
 
+
+def _determine_daily_target(request: MealPlanRequest) -> int:
+    """Determine daily calorie target based on request and objective."""
+    objective_text = _normalize_text(request.objective)
+    if request.weight_kg and request.weight_kg > 0:
+        if any(w in objective_text for w in [WEIGHT_LOSS_OBJECTIVE, "cut", "diet"]):
+            return max(1600, min(2600, int(request.weight_kg * 24)))
+        if any(w in objective_text for w in ["muscle", "bulk", "gain"]):
+            return max(2200, min(3400, int(request.weight_kg * 34)))
+        return max(1800, min(3000, int(request.weight_kg * 30)))
+    if objective_text and any(w in objective_text for w in [WEIGHT_LOSS_OBJECTIVE, "cut", "diet"]):
+        return 1800
+    if objective_text and any(w in objective_text for w in ["muscle", "bulk", "gain"]):
+        return 2800
+    return 2400
+
+
+def _select_recipe_for_meal(
+    meal_type: str,
+    idx: int,
+    safe_recipes: List[Dict[str, Any]],
+    external_recipes: List[Dict[str, Any]],
+    external_search_term: str,
+    prev_recipe_id_for_meal: Dict[str, Optional[str]],
+    recipe_ids_used_today: set,
+) -> Tuple[Optional[Tuple[str, Dict[str, Any]]], Optional[str]]:
+    """Select a recipe for a meal using external/local strategies, avoiding repeats."""
+    # Prefer external when local short
+    if external_recipes and len(safe_recipes) < 4:
+        for ext in external_recipes:
+            ext_id = str(ext.get("id") or "")
+            if ext_id not in recipe_ids_used_today and ext_id != prev_recipe_id_for_meal.get(meal_type):
+                recipe_ids_used_today.add(ext_id)
+                return ("external", ext), None
+
+    # Try local recipes
+    if safe_recipes:
+        for local_rec in safe_recipes:
+            local_id = str(local_rec.get("id", ""))
+            if local_id not in recipe_ids_used_today and local_id != prev_recipe_id_for_meal.get(meal_type):
+                recipe_ids_used_today.add(local_id)
+                return ("local", local_rec), local_id
+
+    # Try external search as fallback
+    if not external_recipes:
+        ext = _cached_search_themealdb(external_search_term, limit=5)
+        if ext:
+            for ext_cand in ext:
+                ext_id = str(ext_cand.get("id") or "")
+                if ext_id not in recipe_ids_used_today and ext_id != prev_recipe_id_for_meal.get(meal_type):
+                    recipe_ids_used_today.add(ext_id)
+                    return ("external", ext_cand), None
+
+    # Last resort: any available local recipe not used today
+    if safe_recipes:
+        for local_rec in safe_recipes:
+            local_id = str(local_rec.get("id", ""))
+            if local_id not in recipe_ids_used_today:
+                recipe_ids_used_today.add(local_id)
+                return ("local", local_rec), local_id
+
+    return None, None
+
+
+def _build_item_from_selected(
+    selected_recipe: Optional[Tuple[str, Dict[str, Any]]],
+    recipe_id: Optional[str],
+    target_cals: int,
+    idx: int,
+    meal_type: str,
+) -> Tuple[Dict[str, Any], Optional[str]]:
+    """Given a selected recipe, compute item fields and macros."""
+    title = "Meal"
+    external_url = None
+    cals = target_cals
+    protein = 25
+    carbs = 60
+    fats = 15
+    current_recipe_id = None
+
+    if selected_recipe:
+        recipe_type, recipe = selected_recipe
+        title = str(recipe.get("title", "Meal"))
+        if recipe_type == "external":
+            external_url = recipe.get("externalUrl")
+            ingredients = recipe.get("ingredients") or []
+            recipe_cals = max(300, 300 + len(ingredients) * 20)
+        else:
+            recipe_cals = int(recipe.get("calories", target_cals) or target_cals)
+
+        repetitions = 1
+        if recipe_cals < target_cals * 0.75 and recipe_cals > 0:
+            repetitions = max(1, min(3, int(target_cals / recipe_cals)))
+            if repetitions > 1:
+                title = f"{title} (x{repetitions})"
+            cals = recipe_cals * repetitions
+        else:
+            cals = recipe_cals
+
+        if recipe_type == "external":
+            ingredients = recipe.get("ingredients") or []
+            protein = max(15, min(40, len(ingredients) * 2)) * repetitions
+        else:
+            ingredients_count = len(recipe.get("ingredients", []) or [])
+            protein = max(20, min(40, ingredients_count * 3)) * repetitions
+
+        carbs = max(50, cals // 3 // 4)
+        fats = max(10, (cals - protein * 4 - carbs * 4) // 9)
+
+        current_recipe_id = recipe_id or str(recipe.get("id") or f"ext_{idx}")
+
+    item = {
+        "mealType": meal_type,
+        "recipeId": recipe_id,
+        "title": title,
+        "externalUrl": external_url,
+        "calories": int(cals),
+        "protein": int(protein),
+        "carbs": int(carbs),
+        "fats": int(fats),
+    }
+
+    return item, current_recipe_id
+
 def _generate_meal_plan_days_with_macros(
     request: MealPlanRequest, days_count: int
 ) -> List[Dict[str, Any]]:
-    days_list = []
+    days_list: List[Dict[str, Any]] = []
     meal_types = ["Breakfast", "Lunch", "Dinner"]
-    
-    # Better calorie targets: default 2400 cal/day for maintenance (can be adjusted based on objective and body weight)
-    # Breakfast ~30%, Lunch ~35%, Dinner ~35%
-    daily_target = 2400
-    objective_text = _normalize_text(request.objective)
-    if request.weight_kg and request.weight_kg > 0:
-        if any(w in objective_text for w in ["weight loss", "cut", "diet"]):
-            daily_target = max(1600, min(2600, int(request.weight_kg * 24)))
-        elif any(w in objective_text for w in ["muscle", "bulk", "gain"]):
-            daily_target = max(2200, min(3400, int(request.weight_kg * 34)))
-        else:
-            daily_target = max(1800, min(3000, int(request.weight_kg * 30)))
-    elif objective_text and any(w in objective_text for w in ["weight loss", "cut", "diet"]):
-        daily_target = 1800
-    elif objective_text and any(w in objective_text for w in ["muscle", "bulk", "gain"]):
-        daily_target = 2800
-    
+
+    daily_target = _determine_daily_target(request)
     meal_cals = {
         "Breakfast": int(daily_target * 0.30),
         "Lunch": int(daily_target * 0.35),
         "Dinner": int(daily_target * 0.35),
     }
-    
+
     safe_recipes = [
         r for r in request.available_recipes
         if not _matches_avoid_list(r, request.allergies + request.disliked_ingredients)
     ]
 
-    # Fetch external recipes once for the entire plan (prefer external for diversity if few local recipes)
     external_search_term = (request.preferred_cuisines[0] if request.preferred_cuisines else None) or request.objective or ""
     external_recipes = _cached_search_themealdb(external_search_term, limit=12) if len(safe_recipes) < 4 else []
 
-    # Track previous day's chosen recipe IDs per meal type
-    prev_recipe_id_for_meal: Dict[str, Optional[str]] = {mt: None for mt in meal_types}
-    
+    prev_recipe_id_for_meal: Dict[str, Optional[str]] = dict.fromkeys(meal_types)
+
     for day_offset in range(days_count):
         day_date = (datetime.now(timezone.utc).date() + timedelta(days=day_offset)).isoformat()
-        items = []
+        items: List[Dict[str, Any]] = []
         day_cals = 0
-        
-        # Track recipe IDs used in THIS day to avoid same-day repeats
         recipe_ids_used_today: set = set()
-        
+
         for idx, meal_type in enumerate(meal_types):
-            recipe = None
-            recipe_id = None
-            external_url = None
-            title = "Meal"
-            cals = meal_cals.get(meal_type, 700)
-            protein = 25
-            carbs = 60
-            fats = 15
-            target_cals = cals
-            repetitions = 1
-            
-            # Strategy 1: Try external recipes first for diversity (if few local)
-            selected_recipe = None
-            
-            if external_recipes and len(safe_recipes) < 4:
-                # Prefer external: find one not used today and not used yesterday for this meal type
-                for ext in external_recipes:
-                    ext_id = str(ext.get("id") or "")
-                    if ext_id not in recipe_ids_used_today and ext_id != prev_recipe_id_for_meal.get(meal_type):
-                        selected_recipe = ("external", ext)
-                        recipe_id = None  # External recipes don't have local IDs
-                        recipe_ids_used_today.add(ext_id)
-                        break
-            
-            # Strategy 2: Use local recipes (ensuring variety)
-            if selected_recipe is None and safe_recipes:
-                for local_rec in safe_recipes:
-                    local_id = str(local_rec.get("id", ""))
-                    # Only pick if NOT used today AND NOT same as yesterday for this meal type
-                    if local_id not in recipe_ids_used_today and local_id != prev_recipe_id_for_meal.get(meal_type):
-                        selected_recipe = ("local", local_rec)
-                        recipe_id = local_id
-                        recipe_ids_used_today.add(local_id)
-                        break
-            
-            # Strategy 3: Fallback - try TheMealDB if nothing else
-            if selected_recipe is None and not external_recipes:
-                ext = _cached_search_themealdb(external_search_term, limit=5)
-                if ext:
-                    for ext_cand in ext:
-                        ext_id = str(ext_cand.get("id") or "")
-                        if ext_id not in recipe_ids_used_today and ext_id != prev_recipe_id_for_meal.get(meal_type):
-                            selected_recipe = ("external", ext_cand)
-                            recipe_ids_used_today.add(ext_id)
-                            break
-            
-            # Last resort: use any available (just to fill the slot)
-            if selected_recipe is None and safe_recipes:
-                for local_rec in safe_recipes:
-                    local_id = str(local_rec.get("id", ""))
-                    if local_id not in recipe_ids_used_today:
-                        selected_recipe = ("local", local_rec)
-                        recipe_id = local_id
-                        recipe_ids_used_today.add(local_id)
-                        break
-            
-            # Process selected recipe
-            if selected_recipe:
-                recipe_type, recipe = selected_recipe
-                
-                title = str(recipe.get("title", "Meal"))
-                if recipe_type == "external":
-                    external_url = recipe.get("externalUrl")
-                    ingredients = recipe.get("ingredients") or []
-                    recipe_cals = max(300, 300 + len(ingredients) * 20)
-                else:
-                    recipe_cals = int(recipe.get("calories", target_cals) or target_cals)
-                
-                # Apply repetition if recipe is too small for target
-                if recipe_cals < target_cals * 0.75 and recipe_cals > 0:
-                    repetitions = max(1, min(3, int(target_cals / recipe_cals)))
-                    if repetitions > 1:
-                        title = f"{title} (x{repetitions})"
-                    cals = recipe_cals * repetitions
-                else:
-                    cals = recipe_cals
-                
-                # Calculate macros
-                if recipe_type == "external":
-                    ingredients = recipe.get("ingredients") or []
-                    protein = max(15, min(40, len(ingredients) * 2)) * repetitions
-                else:
-                    ingredients_count = len(recipe.get("ingredients", []) or [])
-                    protein = max(20, min(40, ingredients_count * 3)) * repetitions
-                
-                carbs = max(50, cals // 3 // 4)
-                fats = max(10, (cals - protein * 4 - carbs * 4) // 9)
-                
-                # Update prev_recipe_id for this meal type for next day's logic
-                current_recipe_id = recipe_id or str(recipe.get("id") or f"ext_{idx}")
+            target_cals = meal_cals.get(meal_type, 700)
+
+            selected, selected_recipe_id = _select_recipe_for_meal(
+                meal_type,
+                idx,
+                safe_recipes,
+                external_recipes,
+                external_search_term,
+                prev_recipe_id_for_meal,
+                recipe_ids_used_today,
+            )
+
+            item, current_recipe_id = _build_item_from_selected(selected, selected_recipe_id, target_cals, idx, meal_type)
+
+            if current_recipe_id:
                 prev_recipe_id_for_meal[meal_type] = current_recipe_id
-            
-            item = {
-                "mealType": meal_type,
-                "recipeId": recipe_id,
-                "title": title,
-                "externalUrl": external_url,
-                "calories": int(cals),
-                "protein": int(protein),
-                "carbs": int(carbs),
-                "fats": int(fats),
-            }
+
             items.append(item)
-            day_cals += int(cals)
-        
-        day = {
+            day_cals += int(item.get("calories", 0))
+
+        days_list.append({
             "date": day_date,
             "title": f"Day {day_offset + 1}",
             "description": f"Balanced meal plan for {day_date}",
             "calories": day_cals,
             "items": items,
-        }
-        days_list.append(day)
-    
+        })
+
     return days_list
 
 
@@ -679,10 +705,10 @@ def _parse_json_or_fallback(raw_text: Optional[str], fallback: Dict[str, Any]) -
 def _extract_retry_seconds(exc: Exception) -> Optional[float]:
     try:
         txt = str(exc)
-        m = re.search(r"Please retry in\s*([0-9]+(?:\.[0-9]+)?)s", txt, re.IGNORECASE)
+        m = re.search(r"Please retry in\s*(\d+(?:\.\d+)?)s", txt, re.IGNORECASE)
         if m:
             return float(m.group(1))
-        m2 = re.search(r"retryDelay\W*['\"]?([0-9]+)s['\"]?", txt, re.IGNORECASE)
+        m2 = re.search(r"retryDelay\W*['\"]?(\d+)s['\"]?", txt, re.IGNORECASE)
         if m2:
             return float(m2.group(1))
     except Exception:
@@ -724,9 +750,19 @@ async def _genai_generate_with_retries(
 
     available_keys = _rotated_keys(available_keys)
 
+    def _compute_retry_seconds(exc: Exception, attempt: int) -> float:
+        from math import inf
+
+        r = _extract_retry_seconds(exc)
+        if r is not None:
+            return r
+        base = min(8, 2 ** attempt)
+        jitter = random.uniform(0, 1)
+        return base + jitter
+
     for api_key in available_keys:
         local_client = genai.Client(api_key=str(api_key))
-        
+
         for attempt in range(max_retries + 1):
             try:
                 async with (_AI_SEMAPHORE or asyncio.Semaphore(1)):
@@ -738,22 +774,18 @@ async def _genai_generate_with_retries(
             except Exception as e:
                 last_exc = e
                 error_str = str(e)
-                
+
                 if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
                     print(f"[AI] API key exhausted (ending in ...{api_key[-4:]}), marking for 1 hour and trying next key.")
                     _KEY_EXHAUSTION_TRACKER[api_key] = time.time()
                     break  # Move to next key
-                
-                retry_seconds = _extract_retry_seconds(e)
-                if retry_seconds is None:
-                    base = min(8, 2 ** attempt)
-                    jitter = random.uniform(0, 1)
-                    retry_seconds = base + jitter
-                
+
+                retry_seconds = _compute_retry_seconds(e, attempt)
+
                 if attempt >= max_retries:
                     print(f"[AI] Max retries exceeded for key ending in ...{api_key[-4:]}: {error_str[:100]}")
                     break  # Move to next key
-                
+
                 try:
                     print(f"[AI] Retry attempt {attempt + 1}/{max_retries + 1} after {retry_seconds:.1f}s")
                     await asyncio.sleep(retry_seconds)
@@ -867,7 +899,7 @@ def _build_search_tools() -> Optional[List[Any]]:
     try:
         from google.genai import types as _types  # type: ignore[import]
         return [_types.Tool(google_search=_types.GoogleSearch())]
-    except (ImportError, Exception):
+    except Exception:
         return None
 
 
@@ -915,7 +947,7 @@ async def recommend_recipes(request: UserProfileAI, debug: bool = Query(False)) 
 
     prompt = _build_gemini_prompt("recommend", compact_payload)
     try:
-        gen_config = {"response_mime_type": "application/json"}
+        gen_config = {"response_mime_type": JSON_MIME_TYPE}
         response = await _genai_generate_with_retries(prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
         data = _parse_json_or_fallback(response.text, fallback)
 
@@ -1005,7 +1037,7 @@ async def generate_meal_plan(request: MealPlanRequest, debug: bool = Query(False
 
     prompt = _build_gemini_prompt("meal-plan", compact_payload)
     try:
-        gen_config: Dict[str, Any] = {"response_mime_type": "application/json"}
+        gen_config: Dict[str, Any] = {"response_mime_type": JSON_MIME_TYPE}
         response = await _genai_generate_with_retries(prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
         data = _parse_json_or_fallback(response.text, fallback)
 
@@ -1078,7 +1110,7 @@ async def coach(request: CoachRequest, debug: bool = Query(False)) -> Dict[str, 
 
     prompt = _build_gemini_prompt("coach", compact_payload)
     try:
-        gen_config = {"response_mime_type": "application/json"}
+        gen_config = {"response_mime_type": JSON_MIME_TYPE}
         response = await _genai_generate_with_retries(prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
         data = _parse_json_or_fallback(response.text, fallback)
 
@@ -1122,7 +1154,7 @@ async def prewarm(request: MealPlanRequest) -> Dict[str, Any]:
         cache_key = _compact_gemini_cache_key("meal-plan", compact_payload)
         try:
             prompt = _build_gemini_prompt("meal-plan", compact_payload)
-            gen_config = {"response_mime_type": "application/json"}
+            gen_config = {"response_mime_type": JSON_MIME_TYPE}
             resp = await _genai_generate_with_retries(prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
             parsed = _parse_json_or_fallback(getattr(resp, "text", None), _fallback_meal_plan(request))
             if isinstance(parsed, dict):
@@ -1145,7 +1177,7 @@ async def prewarm(request: MealPlanRequest) -> Dict[str, Any]:
             rec_payload = _compact_recommendation_payload(user_profile)
             rec_cache_key = _compact_gemini_cache_key("recommend", rec_payload)
             rec_prompt = _build_gemini_prompt("recommend", rec_payload)
-            gen_config = {"response_mime_type": "application/json"}
+            gen_config = {"response_mime_type": JSON_MIME_TYPE}
             rresp = await _genai_generate_with_retries(rec_prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
             rparsed = _parse_json_or_fallback(getattr(rresp, "text", None), _fallback_recommendations(user_profile))
             if isinstance(rparsed, dict):

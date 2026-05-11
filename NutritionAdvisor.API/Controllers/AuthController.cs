@@ -57,8 +57,19 @@ public class AuthController : ControllerBase
                 claims.Add(new Claim("subscription_expires_at", result.SubscriptionEndAt.Value.ToString("O")));
             }
 
+            var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY");
+            if (string.IsNullOrWhiteSpace(jwtKey))
+            {
+                jwtKey = _configuration["Jwt:Key"];
+            }
+
+            if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.StartsWith("REPLACE_WITH_", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("JWT key is not configured.");
+            }
+
             var key = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
+                Encoding.UTF8.GetBytes(jwtKey));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
