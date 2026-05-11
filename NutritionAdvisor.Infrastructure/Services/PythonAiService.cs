@@ -35,4 +35,17 @@ public class PythonAiService : IPythonAiService
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<AiCoachResponseModel>();
     }
+
+    public async Task PrewarmAsync(AiMealPlanRequestModel request)
+    {
+        try
+        {
+            // fire a lightweight prewarm call to the Python AI service; ignore response
+            var _ = await _httpClient.PostAsJsonAsync("/prewarm", request);
+        }
+        catch
+        {
+            // swallow errors - prewarm is best-effort
+        }
+    }
 }
