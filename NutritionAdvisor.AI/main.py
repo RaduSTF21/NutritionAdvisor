@@ -1070,6 +1070,47 @@ async def coach(request: CoachRequest, debug: bool = Query(False)) -> Dict[str, 
     if genai is None or not GEMINI_API_KEYS:
         return fallback
 
+    compact_payload = _compact_coach_payload(request)
+    cache_key = _compact_gemini_cache_key("coach", compact_payload)
+    cached = _get_cached_gemini_response(cache_key)
+    if cached:
+        return cached
+
+    prompt = _build_gemini_prompt("coach", compact_payload)
+    try:
+        gen_config = {"response_mime_type": "application/json"}
+        response = await _genai_generate_with_retries(prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
+        data = _parse_json_or_fallback(response.text, fallback)
+
+        # Attach debug info when requested
+        if debug:
+            raw_text = getattr(response, "text", "")
+            debug_info = {
+                "prompt": prompt,
+                "compact_payload": compact_payload,
+                "gen_config": gen_config,
+                "raw_response": raw_text[:20000] if isinstance(raw_text, str) else str(raw_text),
+                "model": GEMINI_MODEL,
+            }
+            if isinstance(data, dict):
+                data.setdefault("_debug", {}).update(debug_info)
+            else:
+                data = {"_debug": debug_info, "result": data}
+        if isinstance(data, list):
+            data = {"tips": data}
+        result = {
+            "mode": data.get("mode", "gemini"),
+            "userId": request.user_id,
+            "user_id": request.user_id,
+            "answer": data.get("answer", fallback["answer"]),
+            "tips": data.get("tips", fallback["tips"]),
+        }
+        _store_cached_gemini_response(cache_key, result)
+        return result
+    except Exception as e:
+        print(f"Gemini coach failed: {e}")
+        return fallback
+
 
 @app.post("/prewarm")
 async def prewarm(request: MealPlanRequest) -> Dict[str, Any]:
@@ -1115,44 +1156,3 @@ async def prewarm(request: MealPlanRequest) -> Dict[str, Any]:
     except Exception as e:
         print(f"Prewarm overall failed: {e}")
     return {"status": "ok"}
-
-    compact_payload = _compact_coach_payload(request)
-    cache_key = _compact_gemini_cache_key("coach", compact_payload)
-    cached = _get_cached_gemini_response(cache_key)
-    if cached:
-        return cached
-
-    prompt = _build_gemini_prompt("coach", compact_payload)
-    try:
-        gen_config = {"response_mime_type": "application/json"}
-        response = await _genai_generate_with_retries(prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
-        data = _parse_json_or_fallback(response.text, fallback)
-
-        # Attach debug info when requested
-        if debug:
-            raw_text = getattr(response, "text", "")
-            debug_info = {
-                "prompt": prompt,
-                "compact_payload": compact_payload,
-                "gen_config": gen_config,
-                "raw_response": raw_text[:20000] if isinstance(raw_text, str) else str(raw_text),
-                "model": GEMINI_MODEL,
-            }
-            if isinstance(data, dict):
-                data.setdefault("_debug", {}).update(debug_info)
-            else:
-                data = {"_debug": debug_info, "result": data}
-        if isinstance(data, list):
-            data = {"tips": data}
-        result = {
-            "mode": data.get("mode", "gemini"),
-            "userId": request.user_id,
-            "user_id": request.user_id,
-            "answer": data.get("answer", fallback["answer"]),
-            "tips": data.get("tips", fallback["tips"]),
-        }
-        _store_cached_gemini_response(cache_key, result)
-        return result
-    except Exception as e:
-        print(f"Gemini coach failed: {e}")
-        return fallback
