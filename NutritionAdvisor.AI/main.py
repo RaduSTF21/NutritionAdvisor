@@ -1070,6 +1070,52 @@ async def coach(request: CoachRequest, debug: bool = Query(False)) -> Dict[str, 
     if genai is None or not GEMINI_API_KEYS:
         return fallback
 
+
+@app.post("/prewarm")
+async def prewarm(request: MealPlanRequest) -> Dict[str, Any]:
+    """Best-effort warm-up: call Gemini for meal-plan and recommendations to populate cache."""
+    try:
+        # Warm meal-plan cache
+        compact_payload = _compact_meal_plan_payload(request)
+        compact_payload["days"] = max(1, min(request.days, 7))
+        cache_key = _compact_gemini_cache_key("meal-plan", compact_payload)
+        try:
+            prompt = _build_gemini_prompt("meal-plan", compact_payload)
+            gen_config = {"response_mime_type": "application/json"}
+            resp = await _genai_generate_with_retries(prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
+            parsed = _parse_json_or_fallback(getattr(resp, "text", None), _fallback_meal_plan(request))
+            if isinstance(parsed, dict):
+                _store_cached_gemini_response(cache_key, parsed)
+        except Exception as e:
+            print(f"Prewarm meal-plan failed: {e}")
+
+        # Warm recommendations cache (use compact recommendation payload)
+        try:
+            user_profile = UserProfileAI(
+                user_id=request.user_id,
+                objective=request.objective,
+                search_query=None,
+                use_internet_search=False,
+                allergies=request.allergies or [],
+                disliked_ingredients=request.disliked_ingredients or [],
+                limit=3,
+                available_recipes=request.available_recipes or []
+            )
+            rec_payload = _compact_recommendation_payload(user_profile)
+            rec_cache_key = _compact_gemini_cache_key("recommend", rec_payload)
+            rec_prompt = _build_gemini_prompt("recommend", rec_payload)
+            gen_config = {"response_mime_type": "application/json"}
+            rresp = await _genai_generate_with_retries(rec_prompt, gen_config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
+            rparsed = _parse_json_or_fallback(getattr(rresp, "text", None), _fallback_recommendations(user_profile))
+            if isinstance(rparsed, dict):
+                _store_cached_gemini_response(rec_cache_key, rparsed)
+        except Exception as e:
+            print(f"Prewarm recommend failed: {e}")
+
+    except Exception as e:
+        print(f"Prewarm overall failed: {e}")
+    return {"status": "ok"}
+
     compact_payload = _compact_coach_payload(request)
     cache_key = _compact_gemini_cache_key("coach", compact_payload)
     cached = _get_cached_gemini_response(cache_key)
