@@ -1,5 +1,6 @@
 
-using Frontend.Models;
+namespace Frontend.Models;
+
 public class RecipeIngredientModel
 {
     public IngredientModel Ingredient { get; set; } = new IngredientModel();

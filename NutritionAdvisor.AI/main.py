@@ -158,6 +158,18 @@ def _get_valid_external_url(m: Dict[str, Any]) -> Optional[str]:
             return candidate_url
     return None
 
+def _map_meal_db_item(m: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": m.get("idMeal"), 
+        "title": m.get("strMeal"), 
+        "description": (m.get("strInstructions") or "")[:400],
+        "ingredients": _parse_ingredients_from_meal(m), 
+        "sourceUrl": m.get("strSource"), 
+        "youtubeUrl": m.get("strYoutube"),
+        "externalUrl": _get_valid_external_url(m), 
+        "cookingTimeInMinutes": 30
+    }
+
 def _search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[str, Any]]:
     try: import requests
     except ImportError: return []
@@ -166,13 +178,8 @@ def _search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[str, An
         resp = requests.get(url, timeout=6)
         if resp.status_code != 200: return []
         meals = resp.json().get("meals") or []
-        return [{
-            "id": m.get("idMeal"), "title": m.get("strMeal"), "description": (m.get("strInstructions") or "")[:400],
-            "ingredients": _parse_ingredients_from_meal(m), "sourceUrl": m.get("strSource"), "youtubeUrl": m.get("strYoutube"),
-            "externalUrl": _get_valid_external_url(m), "cookingTimeInMinutes": 30
-        } for m in meals[:limit]]
-    except Exception as e:
-        print(f"TheMealDB search failed: {e}")
+        return [_map_meal_db_item(m) for m in meals[:limit]]
+    except Exception:
         return []
 
 def _cached_search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[str, Any]]:
@@ -194,9 +201,7 @@ def _is_placeholder_url(url: Optional[str]) -> bool:
     if not url or not isinstance(url, str): return False
     try: host = urlsplit(url.strip()).netloc.lower()
     except Exception: return False
-    # Normalize common www prefix and check base domain against known placeholders
-    if host.startswith("www."):
-        host = host[4:]
+    if host.startswith("www."): host = host[4:]
     return host in {"example.com", "example.org", "example.net"}
 
 def _perform_http_check(cleaned_url: str, timeout: float) -> bool:
@@ -286,70 +291,84 @@ def _determine_daily_target(request: MealPlanRequest) -> int:
     if obj_txt and any(w in obj_txt for w in ["muscle", "bulk", "gain"]): return 2800
     return 2400
 
+def _find_first_available_recipe(recipes: List[Dict[str, Any]], used_today: set, prev_id: Optional[str], ignore_prev: bool = False) -> Optional[Tuple[Dict[str, Any], str]]:
+    for r in recipes:
+        rid = str(r.get("id", ""))
+        if rid not in used_today and (ignore_prev or rid != prev_id):
+            return r, rid
+    return None
+
 def _select_recipe_for_meal(meal_type: str, safe_recipes: List[Dict[str, Any]], external_recipes: List[Dict[str, Any]], prev_ids: Dict[str, Optional[str]], used_today: set) -> Tuple[Optional[Tuple[str, Dict[str, Any]]], Optional[str]]:
+    prev_id = prev_ids.get(meal_type)
     if external_recipes and len(safe_recipes) < 4:
-        for ext in external_recipes:
-            ext_id = str(ext.get("id") or "")
-            if ext_id not in used_today and ext_id != prev_ids.get(meal_type):
-                used_today.add(ext_id)
-                return ("external", ext), None
-    if safe_recipes:
-        for local_rec in safe_recipes:
-            local_id = str(local_rec.get("id", ""))
-            if local_id not in used_today and local_id != prev_ids.get(meal_type):
-                used_today.add(local_id)
-                return ("local", local_rec), local_id
-    if safe_recipes:
-        for local_rec in safe_recipes:
-            local_id = str(local_rec.get("id", ""))
-            if local_id not in used_today:
-                used_today.add(local_id)
-                return ("local", local_rec), local_id
+        found = _find_first_available_recipe(external_recipes, used_today, prev_id)
+        if found:
+            used_today.add(found[1])
+            return ("external", found[0]), None
+
+    found = _find_first_available_recipe(safe_recipes, used_today, prev_id)
+    if found:
+        used_today.add(found[1])
+        return ("local", found[0]), found[1]
+
+    found = _find_first_available_recipe(safe_recipes, used_today, prev_id, ignore_prev=True)
+    if found:
+        used_today.add(found[1])
+        return ("local", found[0]), found[1]
+
     return None, None
 
+def _calculate_macros(cals: int, protein: int) -> Tuple[int, int]:
+    carbs = max(50, cals // 12)
+    fats = max(10, (cals - protein * 4 - carbs * 4) // 9)
+    return carbs, fats
+
+def _get_recipe_details(recipe_type: str, recipe: Dict[str, Any], target_cals: int) -> Tuple[str, Optional[str], int, int]:
+    title = str(recipe.get("title", "Meal"))
+    ing_count = len(recipe.get("ingredients") or [])
+    if recipe_type == "external":
+        return title, recipe.get("externalUrl"), max(300, 300 + ing_count * 20), ing_count
+    return title, None, int(recipe.get("calories", target_cals) or target_cals), ing_count
+
 def _build_item_from_selected(selected: Optional[Tuple[str, Dict[str, Any]]], recipe_id: Optional[str], target_cals: int, idx: int, meal_type: str) -> Tuple[Dict[str, Any], Optional[str]]:
-    title, external_url, current_id = "Meal", None, recipe_id or f"ext_{idx}"
-    cals, protein, carbs, fats = target_cals, 25, max(50, target_cals // 12), max(10, target_cals // 45)
+    if not selected:
+        carbs, fats = _calculate_macros(target_cals, 25)
+        return {"mealType": meal_type, "recipeId": recipe_id, "title": "Meal", "externalUrl": None, "calories": target_cals, "protein": 25, "carbs": carbs, "fats": fats}, recipe_id or f"ext_{idx}"
+
+    recipe_type, recipe = selected
+    title, ext_url, rec_cals, ing_count = _get_recipe_details(recipe_type, recipe, target_cals)
     
-    if selected:
-        recipe_type, recipe = selected
-        title = str(recipe.get("title", "Meal"))
-        if recipe_type == "external":
-            external_url, ingredients = recipe.get("externalUrl"), recipe.get("ingredients") or []
-            recipe_cals = max(300, 300 + len(ingredients) * 20)
-        else:
-            recipe_cals = int(recipe.get("calories", target_cals) or target_cals)
+    reps = max(1, min(3, int(target_cals / rec_cals))) if 0 < rec_cals < target_cals * 0.75 else 1
+    if reps > 1: title = f"{title} (x{reps})"
         
-        reps = max(1, min(3, int(target_cals / recipe_cals))) if 0 < recipe_cals < target_cals * 0.75 else 1
-        if reps > 1: title = f"{title} (x{reps})"
-        cals = recipe_cals * reps
-        
-        ingredients_count = len(recipe.get("ingredients") or []) if recipe_type == "external" else len(recipe.get("ingredients", []) or [])
-        protein = max(15, min(40, ingredients_count * 2)) * reps
-        carbs, fats = max(50, cals // 12), max(10, (cals - protein * 4 - carbs * 4) // 9)
-        current_id = recipe_id or str(recipe.get("id") or current_id)
-        
-    return {"mealType": meal_type, "recipeId": recipe_id, "title": title, "externalUrl": external_url, "calories": int(cals), "protein": int(protein), "carbs": int(carbs), "fats": int(fats)}, current_id
+    cals = rec_cals * reps
+    protein = max(15, min(40, ing_count * 2)) * reps
+    carbs, fats = _calculate_macros(cals, protein)
+    current_id = recipe_id or str(recipe.get("id") or f"ext_{idx}")
+    
+    item = {"mealType": meal_type, "recipeId": recipe_id, "title": title, "externalUrl": ext_url, "calories": int(cals), "protein": int(protein), "carbs": int(carbs), "fats": int(fats)}
+    return item, current_id
+
+def _generate_single_day(day_offset: int, meal_types: List[str], safe_recipes: List[Dict[str, Any]], external_recipes: List[Dict[str, Any]], prev_ids: Dict[str, Optional[str]], meal_cals: Dict[str, int]) -> Dict[str, Any]:
+    items, day_cals, used_today = [], 0, set()
+    for idx, meal_type in enumerate(meal_types):
+        selected, sel_id = _select_recipe_for_meal(meal_type, safe_recipes, external_recipes, prev_ids, used_today)
+        item, cur_id = _build_item_from_selected(selected, sel_id, meal_cals.get(meal_type, 700), idx, meal_type)
+        if cur_id: prev_ids[meal_type] = cur_id
+        items.append(item)
+        day_cals += int(item.get("calories", 0))
+    date_iso = (datetime.now(timezone.utc).date() + timedelta(days=day_offset)).isoformat()
+    return {"date": date_iso, "title": f"Day {day_offset + 1}", "calories": day_cals, "items": items}
 
 def _generate_meal_plan_days_with_macros(request: MealPlanRequest, days_count: int) -> List[Dict[str, Any]]:
-    days_list, meal_types = [], ["Breakfast", "Lunch", "Dinner"]
+    meal_types = ["Breakfast", "Lunch", "Dinner"]
     daily_target = _determine_daily_target(request)
     meal_cals = {"Breakfast": int(daily_target * 0.30), "Lunch": int(daily_target * 0.35), "Dinner": int(daily_target * 0.35)}
     safe_recipes = [r for r in request.available_recipes if not _matches_avoid_list(r, request.allergies + request.disliked_ingredients)]
     ext_term = (request.preferred_cuisines[0] if request.preferred_cuisines else None) or request.objective or ""
     external_recipes = _cached_search_themealdb(ext_term, limit=12) if len(safe_recipes) < 4 else []
     prev_ids: Dict[str, Optional[str]] = dict.fromkeys(meal_types)
-
-    for day_offset in range(days_count):
-        items, day_cals, used_today = [], 0, set()
-        for idx, meal_type in enumerate(meal_types):
-            selected, sel_id = _select_recipe_for_meal(meal_type, safe_recipes, external_recipes, prev_ids, used_today)
-            item, cur_id = _build_item_from_selected(selected, sel_id, meal_cals.get(meal_type, 700), idx, meal_type)
-            if cur_id: prev_ids[meal_type] = cur_id
-            items.append(item)
-            day_cals += int(item.get("calories", 0))
-        days_list.append({"date": (datetime.now(timezone.utc).date() + timedelta(days=day_offset)).isoformat(), "title": f"Day {day_offset + 1}", "calories": day_cals, "items": items})
-    return days_list
+    return [_generate_single_day(d, meal_types, safe_recipes, external_recipes, prev_ids, meal_cals) for d in range(days_count)]
 
 def _fallback_meal_plan(request: MealPlanRequest) -> Dict[str, Any]:
     days = _enrich_meal_plan_external_urls(_generate_meal_plan_days_with_macros(request, max(1, min(request.days, 14))), request.objective)
@@ -375,10 +394,11 @@ def _extract_retry_seconds(exc: Exception) -> Optional[float]:
         return float(m.group(1)) if m else None
     except Exception: return None
 
-def _attach_debug_info(data: Any, prompt: str, payload: dict, config: dict, error_msg: Optional[str], response_text: str) -> Dict[str, Any]:
+def _format_debug_response(data: Any, fallback: dict, prompt: str, payload: dict, config: dict, err: Optional[str], text: str) -> dict:
     info = {"prompt": prompt, "compact_payload": payload, "gen_config": config, "model": GEMINI_MODEL}
-    if error_msg: info["error"] = error_msg
-    else: info["raw_response"] = response_text[:20000]
+    if err: info["error"] = err
+    else: info["raw_response"] = text[:20000]
+    
     if isinstance(data, dict):
         data.setdefault("_debug", {}).update(info)
         return data
@@ -411,26 +431,37 @@ async def _attempt_genai_call(client, model_name, contents, config):
     async with (_AI_SEMAPHORE or asyncio.Semaphore(1)):
         return await asyncio.to_thread(lambda c=client: c.models.generate_content(model=model_name, contents=contents, config=config))
 
+async def _try_generate_single_key(api_key: str, model_name: str, contents: str, gen_config: Dict[str, Any], max_retries: int) -> Tuple[Any, Optional[Exception], bool]:
+    if genai is None:
+        raise RuntimeError("GenAI not configured.")
+    client = genai.Client(api_key=str(api_key))
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            res = await _attempt_genai_call(client, model_name, contents, gen_config)
+            return res, None, False
+        except Exception as e:
+            last_exc = e
+            err_str = str(e)
+            if "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
+                return None, e, True
+            if attempt >= max_retries: break
+            retry_seconds = _extract_retry_seconds(e) or (min(8, 2 ** attempt) + random.uniform(0, 1))
+            try: await asyncio.sleep(retry_seconds)
+            except Exception: pass
+    return None, last_exc, False
+
 async def _genai_generate_with_retries(contents: str, gen_config: Dict[str, Any], model: Optional[str] = None, max_retries: int = 0) -> Any:
     if genai is None or not GEMINI_API_KEYS: raise RuntimeError("GenAI not configured.")
     model_name = str(model or GEMINI_MODEL)
-    last_exc: Optional[Exception] = None
-    available_keys = _rotated_keys([k for k in GEMINI_API_KEYS if k not in _KEY_EXHAUSTION_TRACKER or time.time() - _KEY_EXHAUSTION_TRACKER[k] > 3600] or list(GEMINI_API_KEYS))
-
-    for api_key in available_keys:
-        client = genai.Client(api_key=str(api_key))
-        for attempt in range(max_retries + 1):
-            try:
-                return await _attempt_genai_call(client, model_name, contents, gen_config)
-            except Exception as e:
-                last_exc = e
-                if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                    _KEY_EXHAUSTION_TRACKER[api_key] = time.time()
-                    break
-                if attempt >= max_retries: break
-                retry_seconds = _extract_retry_seconds(e) or (min(8, 2 ** attempt) + random.uniform(0, 1))
-                try: await asyncio.sleep(retry_seconds)
-                except Exception: pass
+    last_exc = None
+    valid_keys = [k for k in GEMINI_API_KEYS if k not in _KEY_EXHAUSTION_TRACKER or time.time() - _KEY_EXHAUSTION_TRACKER[k] > 3600]
+    
+    for api_key in _rotated_keys(valid_keys or list(GEMINI_API_KEYS)):
+        res, exc, exhausted = await _try_generate_single_key(api_key, model_name, contents, gen_config, max_retries)
+        if res: return res
+        if exhausted: _KEY_EXHAUSTION_TRACKER[api_key] = time.time()
+        last_exc = exc
     raise last_exc or RuntimeError("GenAI generate failed.")
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -476,17 +507,17 @@ async def recommend_recipes(request: UserProfileAI, debug: bool = Query(False)) 
     if cached := _get_cached_gemini_response(cache_key): return cached
 
     prompt = _build_gemini_prompt("recommend", payload)
+    config = {"response_mime_type": JSON_MIME_TYPE}
     try:
-        config = {"response_mime_type": JSON_MIME_TYPE}
         resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
         data = _parse_json_or_fallback(resp.text, fallback)
-        if debug: data = _attach_debug_info(data, prompt, payload, config, None, getattr(resp, "text", ""))
+        if debug: data = _format_debug_response(data, fallback, prompt, payload, config, None, getattr(resp, "text", ""))
         
         result = {"mode": data.get("mode", "gemini") if isinstance(data, dict) else "gemini", "userId": request.user_id, "recommendations": [_normalize_recommendation_item(it) for it in ((data.get("recommendations") if isinstance(data, dict) else data) or fallback["recommendations"])]}
         _store_cached_gemini_response(cache_key, result)
         return result
     except Exception as e:
-        if debug: return _attach_debug_info(fallback.copy(), prompt, payload, {"response_mime_type": JSON_MIME_TYPE}, str(e), "")
+        if debug: return _format_debug_response(fallback.copy(), fallback, prompt, payload, config, str(e), "")
         return fallback
 
 @app.post("/meal-plan")
@@ -500,11 +531,11 @@ async def generate_meal_plan(request: MealPlanRequest, debug: bool = Query(False
     if cached := _get_cached_gemini_response(cache_key): return cached
 
     prompt = _build_gemini_prompt("meal-plan", payload)
+    config = {"response_mime_type": JSON_MIME_TYPE}
     try:
-        config = {"response_mime_type": JSON_MIME_TYPE}
         resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
         data = _parse_json_or_fallback(resp.text, fallback)
-        if debug: data = _attach_debug_info(data, prompt, payload, config, None, getattr(resp, "text", ""))
+        if debug: data = _format_debug_response(data, fallback, prompt, payload, config, None, getattr(resp, "text", ""))
         
         data["userId"] = request.user_id
         days_list = data.get("days") if isinstance(data, dict) else []
@@ -517,7 +548,7 @@ async def generate_meal_plan(request: MealPlanRequest, debug: bool = Query(False
         _store_cached_gemini_response(cache_key, data)
         return data
     except Exception as e:
-        if debug: return _attach_debug_info(_fallback_meal_plan(request), prompt, payload, {"response_mime_type": JSON_MIME_TYPE}, str(e), "")
+        if debug: return _format_debug_response(_fallback_meal_plan(request), fallback, prompt, payload, config, str(e), "")
         return fallback
 
 @app.post("/coach")
@@ -530,11 +561,11 @@ async def coach(request: CoachRequest, debug: bool = Query(False)) -> Dict[str, 
     if cached := _get_cached_gemini_response(cache_key): return cached
 
     prompt = _build_gemini_prompt("coach", payload)
+    config = {"response_mime_type": JSON_MIME_TYPE}
     try:
-        config = {"response_mime_type": JSON_MIME_TYPE}
         resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
         data = _parse_json_or_fallback(resp.text, fallback)
-        if debug: data = _attach_debug_info(data, prompt, payload, config, None, getattr(resp, "text", ""))
+        if debug: data = _format_debug_response(data, fallback, prompt, payload, config, None, getattr(resp, "text", ""))
         
         result = {"mode": data.get("mode", "gemini") if isinstance(data, dict) else "gemini", "userId": request.user_id, "answer": data.get("answer", fallback["answer"]) if isinstance(data, dict) else fallback["answer"], "tips": data.get("tips", fallback["tips"]) if isinstance(data, dict) else fallback["tips"]}
         _store_cached_gemini_response(cache_key, result)

@@ -69,8 +69,8 @@ jobs:
       - name: Install dependencies & pytest
         run: |
           cd NutritionAdvisor.AI
-          pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install --only-binary :all: -r requirements.txt || pip install -r requirements.txt
+          pip install --only-binary :all: pytest pytest-cov || pip install pytest pytest-cov
 
       - name: Run Python tests with coverage
         run: |
