@@ -17,7 +17,7 @@ public class LoginUserCommandHandler : IRequestHandler<LoginUserCommand, LoginUs
         var user = await _userRepository.GetByEmailAsync(request.Email, cancellationToken);
 
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
-            throw new Exception("Invalid email or password.");
+            throw new InvalidOperationException("Invalid email or password.");
 
         return new LoginUserResult(
             user.UserId,

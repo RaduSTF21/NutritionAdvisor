@@ -20,7 +20,7 @@ public class RegisterUserCommandHandler : IRequestHandler<RegisterUserCommand, G
     {
         // Check whether the email address is already registered.
         var existingUser = await _userRepository.GetByEmailAsync(request.Email, cancellationToken);
-        if (existingUser != null) throw new Exception("This email address is already in use.");
+        if (existingUser != null) throw new InvalidOperationException("This email address is already in use.");
 
         // Hash the password with BCrypt.
         string hashedPassword = BCrypt.Net.BCrypt.HashPassword(request.Password);

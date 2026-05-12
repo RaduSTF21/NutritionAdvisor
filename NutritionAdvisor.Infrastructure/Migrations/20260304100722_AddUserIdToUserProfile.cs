@@ -5,10 +5,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace NutritionAdvisor.Infrastructure.Migrations
 {
-    /// <inheritdoc />
     public partial class AddUserIdToUserProfile : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<Guid>(
@@ -16,15 +14,12 @@ namespace NutritionAdvisor.Infrastructure.Migrations
                 table: "UserProfiles",
                 type: "uuid",
                 nullable: false,
-                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
+                defaultValue: Guid.Empty);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "UserId",
-                table: "UserProfiles");
+            throw new NotSupportedException("Downgrading this migration is not supported.");
         }
     }
 }
