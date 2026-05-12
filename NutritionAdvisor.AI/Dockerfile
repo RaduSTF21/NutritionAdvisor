@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 # NOSONAR docker:S8544Beta docker:S8541Beta
-RUN pip sync --no-cache-dir --only-binary :all: -r requirements.txt || pip sync --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --only-binary :all: -r requirements.txt || pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 

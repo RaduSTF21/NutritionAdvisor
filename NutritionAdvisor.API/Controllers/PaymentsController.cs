@@ -8,9 +8,8 @@ using System.Security.Claims;
 
 namespace NutritionAdvisor.API.Controllers;
 
-// --- Controller 1: Managementul Plăților (Checkout & Cancel) ---
 [ApiController]
-[Route("api/payments")]
+[Route("api/[controller]")]
 public class PaymentsController : ControllerBase
 {
     private readonly IPaymentService _paymentService;
@@ -34,36 +33,10 @@ public class PaymentsController : ControllerBase
         var url = await _paymentService.CreateCheckoutSessionAsync(userEmail!, userId);
         return Ok(new { Url = url });
     }
-
-    [Authorize]
-    [HttpPost("cancel-subscription")]
-    public async Task<IActionResult> CancelSubscription()
-    {
-        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(userIdString, out var userId)) return Unauthorized();
-
-        var user = await _userRepository.GetByIdAsync(userId);
-        if (user == null || string.IsNullOrEmpty(user.ProviderSubscriptionId))
-            return BadRequest("Nu a fost găsit un abonament activ.");
-
-        try
-        {
-            var service = new SubscriptionService();
-            var cancelOptions = new SubscriptionUpdateOptions { CancelAtPeriodEnd = true };
-            await service.UpdateAsync(user.ProviderSubscriptionId, cancelOptions);
-
-            return Ok();
-        }
-        catch (StripeException e)
-        {
-            return StatusCode(500, $"Stripe Cancel Error: {e.Message}");
-        }
-    }
 }
 
-// --- Controller 2: Webhook-ul Stripe (Responsabilitate separată) ---
 [ApiController]
-[Route("api/payments/webhook")]
+[Route("api/webhook/stripe")]
 public class StripeWebhookController : ControllerBase
 {
     private readonly IUserRepository _userRepository;
@@ -77,15 +50,13 @@ public class StripeWebhookController : ControllerBase
 
     [HttpPost]
     [AllowAnonymous]
-    public async Task<IActionResult> Webhook()
+    public async Task<IActionResult> Webhook([FromHeader(Name = "Stripe-Signature")] string signature)
     {
-        // Exceptie legitima: Stripe SDK necesită formatul RAW (string nemodificat) 
-        // pentru a putea efectua validarea criptografica a semnaturii!
+        // Stripe necesită corpul cererii ca string raw pentru verificarea semnăturii. Model Binding-ul modifică corpul cererii și strică semnătura.
 #pragma warning disable S6932 
         var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
 #pragma warning restore S6932
 
-        var signature = Request.Headers["Stripe-Signature"];
         var webhookSecret = _configuration["Stripe:WebhookSecret"];
 
         try
@@ -161,5 +132,42 @@ public class StripeWebhookController : ControllerBase
         user.ProviderSubscriptionId = null;
         user.AutoRenew = false;
         await _userRepository.UpdateAsync(user);
+    }
+}
+
+[ApiController]
+[Route("api/payments")]
+public class SubscriptionsController : ControllerBase
+{
+    private readonly IUserRepository _userRepository;
+
+    public SubscriptionsController(IUserRepository userRepository)
+    {
+        _userRepository = userRepository;
+    }
+
+    [Authorize]
+    [HttpPost("cancel-subscription")]
+    public async Task<IActionResult> CancelSubscription()
+    {
+        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdString, out var userId)) return Unauthorized();
+
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null || string.IsNullOrEmpty(user.ProviderSubscriptionId))
+            return BadRequest("Nu a fost găsit un abonament activ.");
+
+        try
+        {
+            var service = new SubscriptionService();
+            var cancelOptions = new SubscriptionUpdateOptions { CancelAtPeriodEnd = true };
+            await service.UpdateAsync(user.ProviderSubscriptionId, cancelOptions);
+
+            return Ok();
+        }
+        catch (StripeException e)
+        {
+            return StatusCode(500, $"Stripe Cancel Error: {e.Message}");
+        }
     }
 }

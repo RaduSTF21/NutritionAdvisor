@@ -19,37 +19,31 @@ public class RecipeRepository : IRecipeRepository
     {
         return await _context.Recipes
             .Include(r => r.Ingredients)
-            .ThenInclude(ri => ri.Ingredient) // Required for calculated nutrition properties.
+            .ThenInclude(ri => ri.Ingredient)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
     }
 
     public async Task<IEnumerable<Recipe>> GetAllAsync(CancellationToken ct)
     {
         return await _context.Recipes
-            .Include(r => r.Ingredients)             // Load the join rows.
-            .ThenInclude(ri => ri.Ingredient)        // Load the related ingredient data.
+            .Include(r => r.Ingredients)
+            .ThenInclude(ri => ri.Ingredient)
             .ToListAsync(ct);
     }
 
     public async Task<IEnumerable<Recipe>> FilterAsync(string? searchTerm, string? tag, Difficulty? level, CancellationToken ct)
     {
-        var query = _context.Recipes
-            .Include(r => r.Ingredients)
-            .ThenInclude(ri => ri.Ingredient)
-            .AsQueryable();
+        var query = _context.Recipes.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
-            var term = searchTerm.Trim().ToLower();
-            query = query.Where(r =>
-                (r.Title != null && r.Title.ToLower().Contains(term)) ||
-                (r.Description != null && r.Description.ToLower().Contains(term)));
+            var lowerTerm = searchTerm.ToLowerInvariant();
+            query = query.Where(r => (r.Title ?? string.Empty).ToLower().Contains(lowerTerm) || (r.Description ?? string.Empty).ToLower().Contains(lowerTerm));
         }
 
-        if (!string.IsNullOrWhiteSpace(tag))
+        if (!string.IsNullOrWhiteSpace(tag) && Enum.TryParse<Difficulty>(tag, true, out var parsedLevel))
         {
-            var normalizedTag = tag.Trim().ToLower();
-            query = query.Where(r => r.Tags.Any(t => t.ToLower() == normalizedTag));
+            query = query.Where(r => r.Level == parsedLevel);
         }
 
         if (level.HasValue)
@@ -57,7 +51,10 @@ public class RecipeRepository : IRecipeRepository
             query = query.Where(r => r.Level == level.Value);
         }
 
-        return await query.ToListAsync(ct);
+        return await query
+            .Include(r => r.Ingredients)
+            .ThenInclude(ri => ri.Ingredient)
+            .ToListAsync(ct);
     }
 
     public async Task AddAsync(Recipe recipe, CancellationToken ct)
@@ -66,14 +63,6 @@ public class RecipeRepository : IRecipeRepository
         await _context.SaveChangesAsync(ct);
     }
 
-    // Update an existing recipe.
-    public async Task UpdateAsync(Recipe recipe, CancellationToken ct)
-    {
-        _context.Recipes.Update(recipe);
-        await _context.SaveChangesAsync(ct);
-    }
-
-    // Delete a recipe by ID.
     public async Task DeleteAsync(Guid id, CancellationToken ct)
     {
         var recipe = await _context.Recipes.FindAsync(new object[] { id }, ct);
@@ -82,5 +71,11 @@ public class RecipeRepository : IRecipeRepository
             _context.Recipes.Remove(recipe);
             await _context.SaveChangesAsync(ct);
         }
+    }
+
+    public async Task UpdateAsync(Recipe recipe, CancellationToken ct)
+    {
+        _context.Recipes.Update(recipe);
+        await _context.SaveChangesAsync(ct);
     }
 }

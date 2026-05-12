@@ -5,6 +5,7 @@ using NutritionAdvisor.Application.Interfaces;
 using NutritionAdvisor.Domain.Enums;
 using System.Security.Claims;
 using System.Text.Json.Serialization;
+
 namespace NutritionAdvisor.API.Controllers;
 
 [ApiController]
@@ -18,6 +19,9 @@ public class AIController : ControllerBase
     private readonly IAllergyRepository _allergyRepository;
     private readonly IFoodPreferenceRepository _foodPreferenceRepository;
     private readonly IRecipeRepository _recipeRepository;
+
+    // CA1861 Fix: Array static pentru fallback
+    private static readonly string[] EmptyStringArray = Array.Empty<string>();
 
     public AIController(
         IPythonAiService aiService,
@@ -38,58 +42,44 @@ public class AIController : ControllerBase
     private async Task<bool> IsUserPremiumAsync(Guid userId)
     {
         var user = await _userRepository.GetByIdAsync(userId);
-        return user != null
-               && user.SubscriptionPlan == SubscriptionPlan.Premium
-               && user.SubscriptionStatus == SubscriptionStatus.Active;
+        return user != null && user.SubscriptionPlan == SubscriptionPlan.Premium && user.SubscriptionStatus == SubscriptionStatus.Active;
     }
 
-    private async Task<(string? Objective, List<string> Allergies, List<string> Disliked, List<AiRecipeDto> Recipes, double? WeightKg, double? HeightCm, int? Age, string? Gender, string? DietType, List<string> PreferredCuisines)> GetUserContextAsync(Guid userId)
+    private async Task<UserAiContext> GetUserContextAsync(Guid userId)
     {
-        var profile = await _userProfileRepository.GetByUserIdAsync(userId);
-        var objective = string.IsNullOrWhiteSpace(profile?.Objective)
-            ? "General Health Improvement"
-            : profile.Objective!.Trim();
-
+        var profile = await _userProfileRepository.GetByUserIdAsync(userId, CancellationToken.None);
         var allergies = await _allergyRepository.GetByUserIdAsync(userId, CancellationToken.None);
-        var allergyNames = allergies.Select(a => a.AllergenName).ToList();
-
-        if (!string.IsNullOrWhiteSpace(profile?.Allergies))
-        {
-            allergyNames.AddRange(
-                profile.Allergies.Split(new[] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        }
-
-        allergyNames = allergyNames
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
         var preferences = await _foodPreferenceRepository.GetByUserIdAsync(userId, CancellationToken.None);
-        var disliked = preferences?.DislikedIngredients ?? new List<string>();
 
-        var recipesDb = await _recipeRepository.GetAllAsync(CancellationToken.None);
-        var availableRecipes = recipesDb.Select(r => new AiRecipeDto(
+        var recipes = await _recipeRepository.GetAllAsync(CancellationToken.None);
+        var availableRecipes = recipes.Select(r => new AiRecipeDto(
             r.Id,
-            r.Title ?? "Untitled Recipe",
+            r.Title ?? string.Empty,
             r.Description ?? string.Empty,
-            r.Ingredients.Select(i => i.Ingredient?.Name ?? "Unknown").ToList(),
-            (int)r.TotalCalories, // Proprietate calculată din Recipe[cite: 1]
+            r.Ingredients.Select(i => $"{i.Amount}{i.Unit} {i.Ingredient?.Name}").ToList(),
+            (int)r.TotalCalories,
             r.CookingTimeInMinutes,
-            r.Level.ToString()
+            r.Tags.Count > 0 ? string.Join(", ", r.Tags) : string.Empty
         )).ToList();
 
-        return (
-            objective,
-            allergyNames,
-            disliked,
-            availableRecipes,
-            profile?.Weight > 0 ? profile.Weight : null,
-            profile?.Height > 0 ? profile.Height : null,
-            profile?.Age > 0 ? profile.Age : null,
-            string.IsNullOrWhiteSpace(profile?.Gender) ? null : profile.Gender,
-            preferences?.DietType.ToString(),
-            preferences?.PreferredCuisines ?? new List<string>());
+        return new UserAiContext(
+            Objective: profile?.Objective,
+            WeightKg: profile != null ? (float?)profile.Weight : null,
+            HeightCm: profile != null ? (float?)profile.Height : null,
+            Age: profile?.Age,
+            Gender: profile?.Gender,
+            Allergies: allergies?.Select(a => a.AllergenName).ToList() ?? EmptyStringArray.ToList(),
+            Disliked: preferences?.DislikedIngredients ?? EmptyStringArray.ToList(),
+            DietType: preferences?.DietType.ToString(),
+            PreferredCuisines: preferences?.PreferredCuisines ?? EmptyStringArray.ToList(),
+            Recipes: availableRecipes
+        );
     }
+
+    private sealed record UserAiContext(
+        string? Objective, float? WeightKg, float? HeightCm, int? Age, string? Gender,
+        List<string> Allergies, List<string> Disliked, string? DietType,
+        List<string> PreferredCuisines, List<AiRecipeDto> Recipes);
 
     [HttpPost("recommend-recipes")]
     public async Task<IActionResult> RecommendRecipes([FromBody] FrontendRecommendationRequest request)
@@ -99,19 +89,16 @@ public class AIController : ControllerBase
 
         var userId = Guid.Parse(userIdString);
         var context = await GetUserContextAsync(userId);
-        var objective = string.IsNullOrWhiteSpace(request.SearchQuery)
-            ? context.Objective
-            : request.SearchQuery.Trim();
 
         var aiRequest = new AiRecommendationRequestModel(
-            userId.ToString(),
-            objective,
-            context.Allergies,
-            context.Disliked,
-            request.Limit,
-            context.Recipes,
-            request.SearchQuery,
-            request.UseInternetSearch
+            UserId: userId.ToString(),
+            Objective: context.Objective,
+            Allergies: context.Allergies,
+            DislikedIngredients: context.Disliked,
+            Limit: request.Limit,
+            AvailableRecipes: context.Recipes,
+            SearchQuery: request.SearchQuery,
+            UseInternetSearch: request.UseInternetSearch
         );
 
         var result = await _aiService.GetRecommendationsAsync(aiRequest);
@@ -127,7 +114,7 @@ public class AIController : ControllerBase
         var userId = Guid.Parse(userIdString);
 
         if (!await IsUserPremiumAsync(userId))
-            return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Premium subscription required." });
+            return StatusCode(403, new { Error = "Premium subscription required." });
 
         var context = await GetUserContextAsync(userId);
 
@@ -159,7 +146,7 @@ public class AIController : ControllerBase
         var userId = Guid.Parse(userIdString);
 
         if (!await IsUserPremiumAsync(userId))
-            return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Premium subscription required." });
+            return StatusCode(403, new { Error = "Premium subscription required." });
 
         var context = await GetUserContextAsync(userId);
 
@@ -200,13 +187,11 @@ public class AIController : ControllerBase
             context.PreferredCuisines
         );
 
-        // Best-effort warm-up; do not block if AI service fails
         await _aiService.PrewarmAsync(aiRequest);
         return Accepted(new { Message = "Prewarm started" });
     }
 }
 
-// Modele pentru request-urile venite din Frontend (Blazor)[cite: 2]
 public record FrontendRecommendationRequest([property: JsonRequired] int Limit, string? SearchQuery = null, bool UseInternetSearch = false);
 public record FrontendMealPlanRequest([property: JsonRequired] int Days);
 public record FrontendCoachRequest(string Message, string? Context);
