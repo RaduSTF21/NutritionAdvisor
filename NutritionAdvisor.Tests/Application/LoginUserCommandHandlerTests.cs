@@ -53,7 +53,7 @@ public class LoginUserCommandHandlerTests
 
         await userRepository.AddAsync(user, CancellationToken.None);
 
-        await Assert.ThrowsAsync<Exception>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             handler.Handle(new LoginUserCommand("radu@example.com", "wrong"), CancellationToken.None));
     }
 }

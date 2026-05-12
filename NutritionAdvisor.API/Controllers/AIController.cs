@@ -63,7 +63,7 @@ public class AIController : ControllerBase
         )).ToList();
 
         return new UserAiContext(
-            Objective: profile?.Objective,
+            Objective: string.IsNullOrWhiteSpace(profile?.Objective) ? "General Health Improvement" : profile!.Objective,
             WeightKg: profile != null ? (float?)profile.Weight : null,
             HeightCm: profile != null ? (float?)profile.Height : null,
             Age: profile?.Age,
@@ -90,9 +90,11 @@ public class AIController : ControllerBase
         var userId = Guid.Parse(userIdString);
         var context = await GetUserContextAsync(userId);
 
+        var objectiveToUse = string.IsNullOrWhiteSpace(request.SearchQuery) ? context.Objective : request.SearchQuery.Trim();
+
         var aiRequest = new AiRecommendationRequestModel(
             UserId: userId.ToString(),
-            Objective: context.Objective,
+            Objective: objectiveToUse,
             Allergies: context.Allergies,
             DislikedIngredients: context.Disliked,
             Limit: request.Limit,
