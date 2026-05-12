@@ -81,7 +81,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
     }
 
     // Parse the claims stored inside the JWT payload.
-    private IEnumerable<Claim> ParseClaimsFromJwt(string jwt)
+    private static IEnumerable<Claim> ParseClaimsFromJwt(string jwt)
     {
         var payload = jwt.Split('.')[1];
         var jsonBytes = ParseBase64WithoutPadding(payload);
@@ -90,7 +90,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         return keyValuePairs!.Select(kvp => new Claim(kvp.Key, kvp.Value?.ToString() ?? ""));
     }
 
-    private byte[] ParseBase64WithoutPadding(string base64)
+    private static byte[] ParseBase64WithoutPadding(string base64)
     {
         switch (base64.Length % 4)
         {

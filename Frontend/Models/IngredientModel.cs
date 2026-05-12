@@ -1,3 +1,6 @@
+
+namespace Frontend.Models;
+
 public class IngredientModel
 {
     public Guid Id { get; set; }
