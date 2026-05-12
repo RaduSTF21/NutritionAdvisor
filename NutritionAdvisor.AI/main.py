@@ -497,7 +497,7 @@ def _handle_internet_search(request: UserProfileAI) -> Optional[Dict[str, Any]]:
     return {"mode": "internet", "userId": request.user_id, "recommendations": [_normalize_recommendation_item({"id": r.get("id"), "title": r.get("title"), "ingredients": r.get("ingredients"), "externalUrl": r.get("externalUrl")}) for r in results]}
 
 @app.post("/recommend")
-async def recommend_recipes(request: UserProfileAI, debug: Annotated[bool, Query(False)]) -> Dict[str, Any]:
+async def recommend_recipes(request: UserProfileAI, debug: Annotated[bool, Query()] = False) -> Dict[str, Any]:
     fallback = _fallback_recommendations(request)
     if genai is None or not GEMINI_API_KEYS: return fallback
     if internet_res := _handle_internet_search(request): return internet_res
@@ -521,7 +521,7 @@ async def recommend_recipes(request: UserProfileAI, debug: Annotated[bool, Query
         return fallback
 
 @app.post("/meal-plan")
-async def generate_meal_plan(request: MealPlanRequest, debug: Annotated[bool, Query(False)]) -> Dict[str, Any]:
+async def generate_meal_plan(request: MealPlanRequest, debug: Annotated[bool, Query()] = False) -> Dict[str, Any]:
     fallback = _fallback_meal_plan(request)
     if genai is None or not GEMINI_API_KEYS: return fallback
 
@@ -552,7 +552,7 @@ async def generate_meal_plan(request: MealPlanRequest, debug: Annotated[bool, Qu
         return fallback
 
 @app.post("/coach")
-async def coach(request: CoachRequest, debug: Annotated[bool, Query(False)]) -> Dict[str, Any]:
+async def coach(request: CoachRequest, debug: Annotated[bool, Query()] = False) -> Dict[str, Any]:
     fallback = _fallback_coach(request)
     if genai is None or not GEMINI_API_KEYS: return fallback
 
