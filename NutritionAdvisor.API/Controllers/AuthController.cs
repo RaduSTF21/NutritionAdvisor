@@ -57,11 +57,11 @@ public class AuthController : ControllerBase
                 claims.Add(new Claim("subscription_expires_at", result.SubscriptionEndAt.Value.ToString("O")));
             }
 
-            // ASP.NET mapează automat variabila Jwt__Key din .env la acest camp
-            var jwtKey = _configuration["Jwt:Key"];
+            // SONARCLOUD FIX: Citim cheia STRICT din Environment (OS), fără IConfiguration.
+            // Când rulezi cu Docker, Docker încarcă fișierul .env direct în sistemul de operare.
+            var jwtKey = Environment.GetEnvironmentVariable("Jwt__Key");
 
-            // Validare strictă
-            if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32 || jwtKey.StartsWith("REPLACE_WITH"))
+            if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
             {
                 throw new InvalidOperationException("A secure JWT key is not configured in the environment.");
             }
@@ -70,8 +70,8 @@ public class AuthController : ControllerBase
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
-                issuer: _configuration["Jwt:Issuer"],
-                audience: _configuration["Jwt:Audience"],
+                issuer: _configuration["Jwt:Issuer"],     // Astea pot rămâne în IConfiguration, nu sunt secrete
+                audience: _configuration["Jwt:Audience"], // Astea pot rămâne în IConfiguration, nu sunt secrete
                 claims: claims,
                 expires: DateTime.UtcNow.AddDays(7),
                 signingCredentials: creds

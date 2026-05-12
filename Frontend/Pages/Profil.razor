@@ -68,60 +68,60 @@
         Allergies = ""
     };
 
-    // This replaces the previous initialization method.
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var userClaim = authState.User;
         
-        if (userClaim.Identity?.IsAuthenticated == true)
-        {
-            var userIdClaim = userClaim.FindFirst(ClaimTypes.NameIdentifier);
-            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
-            {
-                currentUserId = userId;
-                user.UserId = userId;
-                
-                try
-                {
-                    var response = await Http.GetAsync($"api/UserProfile/{userId}");
-                    if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
-                    {
-                        await HandleAuthorizationFailure();
-                        return;
-                    }
+        // Returnare rapidă (Early Return) pentru a scădea complexitatea
+        if (authState.User.Identity?.IsAuthenticated != true) return;
 
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var existingProfile = await response.Content.ReadFromJsonAsync<UserProfile>();
-                        if (existingProfile != null)
-                        {
-                            user = existingProfile;
-                        }
-                        else
-                        {
-                            editing = true;
-                        }
-                    }
-                    else
-                    {
-                        editing = true;
-                    }
-                }
-                catch (Exception)
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId)) return;
+
+        currentUserId = userId;
+        user.UserId = userId;
+        
+        await LoadUserProfileAsync(userId);
+    }
+
+    // Am extras logica de fetch într-o funcție separată mai mică
+    private async Task LoadUserProfileAsync(Guid userId)
+    {
+        try
+        {
+            var response = await Http.GetAsync($"api/UserProfile/{userId}");
+            
+            if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                await HandleAuthorizationFailure();
+                return;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                var existingProfile = await response.Content.ReadFromJsonAsync<UserProfile>();
+                if (existingProfile != null)
                 {
-                    editing = true;
-                    Snackbar.Add("Could not load profile details.", Severity.Warning);
+                    user = existingProfile;
+                    return; // Early return dacă totul e ok
                 }
             }
+            
+            // Dacă am ajuns aici, profilul nu există sau a eșuat parsarea
+            editing = true;
+        }
+        catch (Exception)
+        {
+            editing = true;
+            Snackbar.Add("Could not load profile details.", Severity.Warning);
         }
     }
     
     private async Task SaveProfile()
     {
         user.UserId = currentUserId;
-
         var response = await Http.PostAsJsonAsync("api/userprofile", user);
+        
         if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
         {
             await HandleAuthorizationFailure();
