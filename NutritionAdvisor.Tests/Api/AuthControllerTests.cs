@@ -1,5 +1,9 @@
+using System;
+using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Reflection;
+using System.Threading;
+using Xunit;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -76,6 +80,8 @@ public class AuthControllerTests
 
     private static IConfiguration BuildConfiguration()
     {
+        // Ensure controller reads the JWT key from environment as expected in production
+        Environment.SetEnvironmentVariable("Jwt__Key", "01234567890123456789012345678901");
         return new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {

@@ -194,7 +194,10 @@ def _is_placeholder_url(url: Optional[str]) -> bool:
     if not url or not isinstance(url, str): return False
     try: host = urlsplit(url.strip()).netloc.lower()
     except Exception: return False
-    return host in {"example.com", "www.example.com", "example.org", "www.example.net"}
+    # Normalize common www prefix and check base domain against known placeholders
+    if host.startswith("www."):
+        host = host[4:]
+    return host in {"example.com", "example.org", "example.net"}
 
 def _perform_http_check(cleaned_url: str, timeout: float) -> bool:
     import requests
