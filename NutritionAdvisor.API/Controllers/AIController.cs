@@ -4,7 +4,7 @@ using NutritionAdvisor.Application.AI;
 using NutritionAdvisor.Application.Interfaces;
 using NutritionAdvisor.Domain.Enums;
 using System.Security.Claims;
-
+using System.Text.Json.Serialization;
 namespace NutritionAdvisor.API.Controllers;
 
 [ApiController]
@@ -207,6 +207,6 @@ public class AIController : ControllerBase
 }
 
 // Modele pentru request-urile venite din Frontend (Blazor)[cite: 2]
-public record FrontendRecommendationRequest(int Limit, string? SearchQuery = null, bool UseInternetSearch = false);
-public record FrontendMealPlanRequest(int Days);
+public record FrontendRecommendationRequest([property: JsonRequired] int Limit, string? SearchQuery = null, bool UseInternetSearch = false);
+public record FrontendMealPlanRequest([property: JsonRequired] int Days);
 public record FrontendCoachRequest(string Message, string? Context);

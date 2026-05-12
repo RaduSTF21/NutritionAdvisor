@@ -2,7 +2,7 @@ using MediatR;
 using NutritionAdvisor.Application.DailyLogs.Queries.GetDailyLog;
 using NutritionAdvisor.Application.Interfaces;
 using NutritionAdvisor.Domain.Entities;
-
+namespace Application.DailyLogs.Queries.GetDailyLog;
 public class GetDailyLogQueryHandler : IRequestHandler<GetDailyLogQuery, DailyLog?>
 {
     private readonly IDailyLogRepository _dailyLogRepository;

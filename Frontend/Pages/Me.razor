@@ -8,6 +8,7 @@
 @using NutritionAdvisor.Domain.Enums
 @using Frontend.Models
 @using Frontend.Auth
+@using System.Text.Json.Serialization
 @inject HttpClient Http
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ISnackbar Snackbar
@@ -433,7 +434,6 @@
         else Snackbar.Add("Could not save preferences.", Severity.Error);
     }
 
-    // Făcut 'static' pentru S2325
     private static List<string> ParseCsv(string input) => input.Split(',', StringSplitOptions.TrimEntries |
 StringSplitOptions.RemoveEmptyEntries).ToList();
 
@@ -523,7 +523,7 @@ DateTime.UtcNow.AddHours(-24)));
     private double TodayCalorieProgress => dailyCalorieTarget <= 0 ? 0 : Math.Min(100, todayCalories / dailyCalorieTarget *
 100);
 
-    private string RenderNutritionChart(NutritionTotals totals, double calorieTarget, string windowLabel)
+    private static string RenderNutritionChart(NutritionTotals totals, double calorieTarget, string windowLabel)
     {
         var metrics = BuildNutritionMetrics(totals, calorieTarget);
         var rows = string.Join("", metrics.Select(metric => $"<div style='margin-bottom:12px;'><div style='display:flex;justify-content:space-between;gap:12px;margin-bottom:4px;'><span>{metric.Label}</span><span><b>{metric.Value:F0} {metric.Unit}</b> / {metric.Target:F0} {metric.Unit}</span></div><div style='height:10px;background:rgba(0,0,0,0.08);border-radius:999px;overflow:hidden;'><div style='width:{Math.Min(100,
@@ -532,7 +532,6 @@ metric.Target <= 0 ? 0 : metric.Value / metric.Target *
         return $"<div><div style='font-size:12px;opacity:.7;margin-bottom:8px;'>Window: {windowLabel}</div>{rows}</div>";
     }
 
-    // Făcut 'static' pentru S2325
     private static IReadOnlyList<NutritionMetric> BuildNutritionMetrics(NutritionTotals totals, double calorieTarget)
     {
         return new List<NutritionMetric>
@@ -579,19 +578,27 @@ metric.Target <= 0 ? 0 : metric.Value / metric.Target *
 
     private sealed record NutritionMetric(string Label, double Value, double Target, string Unit, string Color);
 
-    // Făcut 'sealed' și `get; init;` pentru S3260, S1144, S3459
     private sealed class AllergyVm
     {
-        public Guid Id { get; init; }
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        [JsonPropertyName("allergenName")]
         public string AllergenName { get; set; } = string.Empty;
+
+        [JsonPropertyName("severityLevel")]
         public AllergySeverity SeverityLevel { get; set; }
     }
     
-    // Făcut 'sealed' pentru S3260
     private sealed class FoodPreferenceVm
     {
+        [JsonPropertyName("dietType")]
         public DietType DietType { get; set; } = DietType.None;
+
+        [JsonPropertyName("preferredCuisines")]
         public List<string> PreferredCuisines { get; set; } = new();
+
+        [JsonPropertyName("dislikedIngredients")]
         public List<string> DislikedIngredients { get; set; } = new();
     }
 }

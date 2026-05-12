@@ -1,4 +1,5 @@
 @page "/register"
+@using System.Text.Json.Serialization
 @inject HttpClient Http
 @inject NavigationManager NavManager
 
@@ -34,18 +35,16 @@
                 }
                 else
                 {
-
-                    <span>Sign
-                        Up</span>
-                    }
-                </MudButton>
+                    <span>Sign Up</span>
+                }
+            </MudButton>
             
-                <MudText Align="Align.Center" Class="mt-4">
-                    Already have an account? <MudLink Href="/login">Login here</MudLink>
-                </MudText>
-            </MudCardContent>
-        </MudCard>
-    </MudContainer>
+            <MudText Align="Align.Center" Class="mt-4">
+                Already have an account? <MudLink Href="/login">Login here</MudLink>
+            </MudText>
+        </MudCardContent>
+    </MudCard>
+</MudContainer>
 
 @code {
     private string name = "";
@@ -70,7 +69,6 @@
 
         isLoading = true;
 
-        // Create the payload in the exact format expected by the backend.
         var registerCommand = new { Name = name, Email = email, Password = password };
 
         try
@@ -80,14 +78,13 @@
             if (response.IsSuccessStatusCode)
             {
                 showSuccessMessage = true;
-                StateHasChanged(); // Force the UI to render the success message.
+                StateHasChanged();
                 
-                await Task.Delay(2000); // Wait 2 seconds so the user can read the message.
-                NavManager.NavigateTo("/login"); // Redirect to the login page.
+                await Task.Delay(2000);
+                NavManager.NavigateTo("/login");
             }
             else
             {
-                // If the email already exists, surface the backend error.
                 var errorResult = await response.Content.ReadFromJsonAsync<ErrorResponse>();
                 errorMessage = errorResult?.Error ?? "Registration failed. Please try again.";
             }
@@ -102,6 +99,9 @@
         }
     }
 
-    // Small helper type for reading the error payload returned by AuthController.
-    private sealed class ErrorResponse { public string? Error { get; init; } }
+    private sealed class ErrorResponse
+    {
+        [JsonPropertyName("error")]
+        public string? Error { get; set; }
+    }
 }

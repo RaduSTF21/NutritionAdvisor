@@ -2,6 +2,7 @@
 @using NutritionAdvisor.Domain.Enums
 @using Frontend.Auth
 @using System.Net
+@using System.Text.Json.Serialization
 @inject HttpClient Http
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthStateProvider
@@ -140,8 +141,13 @@
 
     private sealed class AllergyVm
     {
-        public Guid Id { get; init; }
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+        
+        [JsonPropertyName("allergenName")]
         public string AllergenName { get; set; } = string.Empty;
+        
+        [JsonPropertyName("severityLevel")]
         public AllergySeverity SeverityLevel { get; set; }
     }
 }
