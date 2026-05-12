@@ -15,23 +15,34 @@
         </MudCardHeader>
         <MudCardContent>
             <MudTextField @bind-Value="email" Label="Email" Variant="Variant.Outlined" Class="mb-4" />
-            <MudTextField @bind-Value="password" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-6" />
+            <MudTextField @bind-Value="password" Label="Password" Variant="Variant.Outlined"
+                          InputType="InputType.Password" Class="mb-6" />
             
             @if (!string.IsNullOrEmpty(errorMessage))
             {
                 <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
             }
             
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="HandleLogin" Disabled="@isLoading">
-                @if (isLoading) { <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true"/> } else { <span>Sign In</span> }
-            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true"
+                       OnClick="HandleLogin" Disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                }
+                else
+                {
+
+                    <span>Sign
+                        In</span>
+                    }
+                </MudButton>
             
-            <MudText Align="Align.Center" Class="mt-4">
-                Don't have an account? <MudLink Href="/register">Register here</MudLink>
-            </MudText>
-        </MudCardContent>
-    </MudCard>
-</MudContainer>
+                <MudText Align="Align.Center" Class="mt-4">
+                    Don't have an account? <MudLink Href="/register">Register here</MudLink>
+                </MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudContainer>
 
 @code {
     private string email = "";
@@ -81,6 +92,6 @@
         }
     }
 
-    private class LoginResponse { public string? Token { get; set; } }
-    private class ErrorResponse { public string? Error { get; set; } }
+    private sealed class LoginResponse { public string? Token { get; init; } }
+    private sealed class ErrorResponse { public string? Error { get; init; } }
 }

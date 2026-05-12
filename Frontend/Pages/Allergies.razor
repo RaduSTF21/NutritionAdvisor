@@ -138,9 +138,9 @@
         Navigation.NavigateTo("/login");
     }
 
-    private class AllergyVm
+    private sealed class AllergyVm
     {
-        public Guid Id { get; set; }
+        public Guid Id { get; init; }
         public string AllergenName { get; set; } = string.Empty;
         public AllergySeverity SeverityLevel { get; set; }
     }

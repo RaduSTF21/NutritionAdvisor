@@ -233,7 +233,7 @@
         return userProfile.Weight / (heightInMeters * heightInMeters);
     }
 
-    private string GetBmiStatus(double bmi)
+    private static string GetBmiStatus(double bmi)
     {
         if (bmi <= 0) return "N/A";
         if (bmi < 18.5) return "Underweight";
@@ -242,7 +242,7 @@
         return "Obese";
     }
 
-    private Color GetBmiColor(double bmi) => (bmi >= 18.5 && bmi < 25) ? Color.Success : Color.Error;
+    private static Color GetBmiColor(double bmi) => (bmi >= 18.5 && bmi < 25) ? Color.Success : Color.Error;
 
-    private Severity GetBmiSeverity(double bmi) => (bmi >= 18.5 && bmi < 25) ? Severity.Success : Severity.Warning;
+    private static Severity GetBmiSeverity(double bmi) => (bmi >= 18.5 && bmi < 25) ? Severity.Success : Severity.Warning;
 }

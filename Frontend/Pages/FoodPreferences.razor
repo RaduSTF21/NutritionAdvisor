@@ -100,7 +100,7 @@
         Navigation.NavigateTo("/login");
     }
 
-    private class FoodPreferenceVm
+    private sealed class FoodPreferenceVm
     {
         public DietType DietType { get; set; } = DietType.None;
         public List<string> PreferredCuisines { get; set; } = new();

@@ -12,8 +12,10 @@
         <MudCardContent>
             <MudTextField @bind-Value="name" Label="Full Name" Variant="Variant.Outlined" Class="mb-4" />
             <MudTextField @bind-Value="email" Label="Email" Variant="Variant.Outlined" Class="mb-4" />
-            <MudTextField @bind-Value="password" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-4" />
-            <MudTextField @bind-Value="confirmPassword" Label="Confirm Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-6" />
+            <MudTextField @bind-Value="password" Label="Password" Variant="Variant.Outlined"
+                          InputType="InputType.Password" Class="mb-4" />
+            <MudTextField @bind-Value="confirmPassword" Label="Confirm Password" Variant="Variant.Outlined"
+                          InputType="InputType.Password" Class="mb-6" />
             
             @if (!string.IsNullOrEmpty(errorMessage))
             {
@@ -24,16 +26,26 @@
                 <MudAlert Severity="Severity.Success" Class="mb-4">Account created successfully! Redirecting...</MudAlert>
             }
             
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="HandleRegister" Disabled="@isLoading">
-                @if (isLoading) { <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true"/> } else { <span>Sign Up</span> }
-            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true"
+                       OnClick="HandleRegister" Disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                }
+                else
+                {
+
+                    <span>Sign
+                        Up</span>
+                    }
+                </MudButton>
             
-            <MudText Align="Align.Center" Class="mt-4">
-                Already have an account? <MudLink Href="/login">Login here</MudLink>
-            </MudText>
-        </MudCardContent>
-    </MudCard>
-</MudContainer>
+                <MudText Align="Align.Center" Class="mt-4">
+                    Already have an account? <MudLink Href="/login">Login here</MudLink>
+                </MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudContainer>
 
 @code {
     private string name = "";
@@ -91,5 +103,5 @@
     }
 
     // Small helper type for reading the error payload returned by AuthController.
-    private class ErrorResponse { public string? Error { get; set; } }
+    private sealed class ErrorResponse { public string? Error { get; init; } }
 }

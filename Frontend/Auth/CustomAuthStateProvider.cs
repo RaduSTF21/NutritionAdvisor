@@ -9,6 +9,9 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 {
     private readonly ILocalStorageService _localStorage;
 
+    // S1192 Fix: Evitarea duplicarii string-urilor
+    private const string AuthTokenKey = "authToken";
+
     public CustomAuthStateProvider(ILocalStorageService localStorage)
     {
         _localStorage = localStorage;
@@ -17,7 +20,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
         // 1. Look for the token in browser storage.
-        var token = await _localStorage.GetItemAsync<string>("authToken");
+        var token = await _localStorage.GetItemAsync<string>(AuthTokenKey);
 
         // 2. If it is missing, the user is anonymous.
         if (string.IsNullOrWhiteSpace(token))
@@ -37,7 +40,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
                 var expiresAt = DateTimeOffset.FromUnixTimeSeconds(expUnixSeconds);
                 if (expiresAt <= DateTimeOffset.UtcNow)
                 {
-                    await _localStorage.RemoveItemAsync("authToken");
+                    await _localStorage.RemoveItemAsync(AuthTokenKey);
                     return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
                 }
             }
@@ -49,7 +52,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         catch
         {
             // If token cannot be parsed, clear it and force anonymous state.
-            await _localStorage.RemoveItemAsync("authToken");
+            await _localStorage.RemoveItemAsync(AuthTokenKey);
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
     }
@@ -74,7 +77,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
     public async Task MarkUserAsLoggedOut()
     {
         // Remove the saved token (ensure the key name matches the one used at login).
-        await _localStorage.RemoveItemAsync("authToken");
+        await _localStorage.RemoveItemAsync(AuthTokenKey);
 
         var anonymousUser = new ClaimsPrincipal(new ClaimsIdentity());
         NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(anonymousUser)));
@@ -99,6 +102,4 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         }
         return Convert.FromBase64String(base64);
     }
-
-
 }
