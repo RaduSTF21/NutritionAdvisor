@@ -539,6 +539,86 @@ def test_gemini_response_cache():
     assert retrieved == test_data
 
 
+def test_gemini_key_fingerprint_is_masked():
+    """Test that key fingerprints do not expose the secret value"""
+    fingerprint = ai_main._gemini_key_fingerprint("secret-test-key")
+
+    assert len(fingerprint) == 10
+    assert fingerprint != "secret-test-key"
+
+
+def test_classify_gemini_error_detects_leaked_key():
+    """Test leaked-key error classification"""
+    error = Exception("ClientError: 403 PERMISSION_DENIED. Your API key was reported as leaked.")
+
+    assert ai_main._classify_gemini_error(error) == "key_leaked"
+
+
+def test_ordered_gemini_keys_prefers_recent_success():
+    """Test that the last successful key is tried first"""
+    original_keys = list(ai_main.GEMINI_API_KEYS)
+    try:
+        ai_main.GEMINI_API_KEYS = ["key-a", "key-b", "key-c"]
+        ai_main._KEY_EXHAUSTION_TRACKER.clear()
+        ai_main._KEY_SUCCESS_TRACKER.clear()
+        ai_main._KEY_SUCCESS_TRACKER["key-b"] = __import__('time').time()
+
+        ordered = ai_main._ordered_gemini_keys()
+
+        assert ordered[0] == "key-b"
+        assert set(ordered) == {"key-a", "key-b", "key-c"}
+    finally:
+        ai_main.GEMINI_API_KEYS = original_keys
+        ai_main._KEY_EXHAUSTION_TRACKER.clear()
+        ai_main._KEY_SUCCESS_TRACKER.clear()
+
+
+def test_ordered_gemini_keys_skips_recent_exhausted_keys():
+    """Test that exhausted keys are pushed out of the hot path"""
+    original_keys = list(ai_main.GEMINI_API_KEYS)
+    try:
+        ai_main.GEMINI_API_KEYS = ["key-a", "key-b", "key-c"]
+        ai_main._KEY_EXHAUSTION_TRACKER.clear()
+        ai_main._KEY_SUCCESS_TRACKER.clear()
+        ai_main._KEY_EXHAUSTION_TRACKER["key-a"] = __import__('time').time()
+
+        ordered = ai_main._ordered_gemini_keys()
+
+        assert ordered[0] != "key-a"
+        assert "key-a" not in ordered
+        assert set(ordered) == {"key-b", "key-c"}
+    finally:
+        ai_main.GEMINI_API_KEYS = original_keys
+        ai_main._KEY_EXHAUSTION_TRACKER.clear()
+        ai_main._KEY_SUCCESS_TRACKER.clear()
+
+
+def test_gemini_health_reports_masked_states():
+    """Test that the Gemini health endpoint exposes masked state only"""
+    original_keys = list(ai_main.GEMINI_API_KEYS)
+    try:
+        ai_main.GEMINI_API_KEYS = ["key-a", "key-b", "key-c"]
+        ai_main._KEY_EXHAUSTION_TRACKER.clear()
+        ai_main._KEY_SUCCESS_TRACKER.clear()
+        ai_main._KEY_QUARANTINE_TRACKER.clear()
+        ai_main._KEY_QUARANTINE_TRACKER["key-a"] = __import__('time').time()
+        ai_main._KEY_EXHAUSTION_TRACKER["key-b"] = __import__('time').time()
+        ai_main._KEY_SUCCESS_TRACKER["key-c"] = __import__('time').time()
+
+        health = ai_main.gemini_health()
+
+        assert health["keyCount"] == 3
+        assert health["keys"][0]["key"].startswith("k1:")
+        assert health["keys"][0]["state"] == "quarantined"
+        assert health["keys"][1]["state"] == "exhausted"
+        assert health["keys"][2]["state"] == "recent_success"
+    finally:
+        ai_main.GEMINI_API_KEYS = original_keys
+        ai_main._KEY_EXHAUSTION_TRACKER.clear()
+        ai_main._KEY_SUCCESS_TRACKER.clear()
+        ai_main._KEY_QUARANTINE_TRACKER.clear()
+
+
 def test_themealdb_cache():
     """Test TheMealDB search caching"""
     ai_main._THEMEALDB_CACHE.clear()

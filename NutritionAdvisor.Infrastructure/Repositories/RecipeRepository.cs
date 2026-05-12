@@ -37,8 +37,9 @@ public class RecipeRepository : IRecipeRepository
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
-            var lowerTerm = searchTerm.ToLowerInvariant();
-            query = query.Where(r => (r.Title ?? string.Empty).ToLower().Contains(lowerTerm) || (r.Description ?? string.Empty).ToLower().Contains(lowerTerm));
+            query = query.Where(r =>
+                (r.Title ?? string.Empty).Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                (r.Description ?? string.Empty).Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
         }
 
         if (!string.IsNullOrWhiteSpace(tag) && Enum.TryParse<Difficulty>(tag, true, out var parsedLevel))

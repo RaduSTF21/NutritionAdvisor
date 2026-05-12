@@ -32,7 +32,11 @@ public class DeleteMealPlanCommandHandler : IRequestHandler<DeleteMealPlanComman
         }
 
         await _repository.DeleteAsync(request.MealPlanId, cancellationToken);
-        _logger.LogInformation("Deleted meal plan {PlanId} successfully.", request.MealPlanId);
+
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Deleted meal plan {PlanId} successfully.", request.MealPlanId);
+        }
 
         return true;
     }
