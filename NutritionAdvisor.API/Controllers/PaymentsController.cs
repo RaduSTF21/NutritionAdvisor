@@ -8,19 +8,18 @@ using System.Security.Claims;
 
 namespace NutritionAdvisor.API.Controllers;
 
+// --- Controller 1: Managementul Plăților (Checkout & Cancel) ---
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/payments")]
 public class PaymentsController : ControllerBase
 {
     private readonly IPaymentService _paymentService;
     private readonly IUserRepository _userRepository;
-    private readonly IConfiguration _configuration;
 
-    public PaymentsController(IPaymentService paymentService, IUserRepository userRepository, IConfiguration configuration)
+    public PaymentsController(IPaymentService paymentService, IUserRepository userRepository)
     {
         _paymentService = paymentService;
         _userRepository = userRepository;
-        _configuration = configuration;
     }
 
     [Authorize]
@@ -57,16 +56,35 @@ public class PaymentsController : ControllerBase
         }
         catch (StripeException e)
         {
-            Console.WriteLine($"[Stripe Cancel Error] {e.Message}");
-            return StatusCode(500, "Nu am putut anula abonamentul în Stripe.");
+            return StatusCode(500, $"Stripe Cancel Error: {e.Message}");
         }
     }
+}
 
-    [HttpPost("webhook")]
+// --- Controller 2: Webhook-ul Stripe (Responsabilitate separată) ---
+[ApiController]
+[Route("api/payments/webhook")]
+public class StripeWebhookController : ControllerBase
+{
+    private readonly IUserRepository _userRepository;
+    private readonly IConfiguration _configuration;
+
+    public StripeWebhookController(IUserRepository userRepository, IConfiguration configuration)
+    {
+        _userRepository = userRepository;
+        _configuration = configuration;
+    }
+
+    [HttpPost]
     [AllowAnonymous]
     public async Task<IActionResult> Webhook()
     {
+        // Exceptie legitima: Stripe SDK necesită formatul RAW (string nemodificat) 
+        // pentru a putea efectua validarea criptografica a semnaturii!
+#pragma warning disable S6932 
         var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+#pragma warning restore S6932
+
         var signature = Request.Headers["Stripe-Signature"];
         var webhookSecret = _configuration["Stripe:WebhookSecret"];
 
@@ -89,19 +107,11 @@ public class PaymentsController : ControllerBase
 
             return Ok();
         }
-        catch (StripeException e)
+        catch (Exception)
         {
-            Console.WriteLine($"[STRIPE ERROR] Validare eșuată: {e.Message}");
             return BadRequest();
         }
-        catch (Exception e)
-        {
-            Console.WriteLine($"[WEBHOOK ERROR] Eroare generală: {e.Message}");
-            return StatusCode(500);
-        }
     }
-
-    // --- METODE PRIVATE EXTRASE PENTRU A REDUCE COMPLEXITATEA ---
 
     private async Task HandleCheckoutSessionCompletedAsync(Event stripeEvent)
     {
@@ -122,13 +132,9 @@ public class PaymentsController : ControllerBase
             var stripeSub = await subService.GetAsync(session.SubscriptionId);
             user.SubscriptionEndAt = stripeSub.Items?.Data?.FirstOrDefault()?.CurrentPeriodEnd;
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[STRIPE WARNING] Nu am putut lua data abonamentului inițial: {ex.Message}");
-        }
+        catch { /* ignored */ }
 
         await _userRepository.UpdateAsync(user);
-        Console.WriteLine($"[STRIPE] Sesiune finalizată. Abonament generat: {session.SubscriptionId}. Expiră la: {user.SubscriptionEndAt}");
     }
 
     private async Task HandleSubscriptionUpdatedAsync(Event stripeEvent)
@@ -140,9 +146,7 @@ public class PaymentsController : ControllerBase
 
         user.SubscriptionEndAt = stripeSubscription.Items?.Data?.FirstOrDefault()?.CurrentPeriodEnd;
         user.AutoRenew = !stripeSubscription.CancelAtPeriodEnd;
-
         await _userRepository.UpdateAsync(user);
-        Console.WriteLine($"[STRIPE] Abonament actualizat. Noua expirare: {user.SubscriptionEndAt}. Auto-renew: {user.AutoRenew}");
     }
 
     private async Task HandleSubscriptionDeletedAsync(Event stripeEvent)
@@ -156,8 +160,6 @@ public class PaymentsController : ControllerBase
         user.SubscriptionStatus = SubscriptionStatus.Inactive;
         user.ProviderSubscriptionId = null;
         user.AutoRenew = false;
-
         await _userRepository.UpdateAsync(user);
-        Console.WriteLine($"[STRIPE] Abonament expirat definitiv pentru {user.Email}. Downgrade la Free.");
     }
 }

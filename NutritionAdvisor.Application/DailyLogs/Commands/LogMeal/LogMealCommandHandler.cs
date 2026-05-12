@@ -17,7 +17,7 @@ public class LogMealCommandHandler : IRequestHandler<LogMealCommand, Guid>
 
     public async Task<Guid> Handle(LogMealCommand request, CancellationToken cancellationToken)
     {
-        var recipe = await _recipeRepository.GetByIdAsync(request.RecipeId, cancellationToken) ?? throw new Exception("Recipe not found.");
+        var recipe = await _recipeRepository.GetByIdAsync(request.RecipeId, cancellationToken) ?? throw new InvalidOperationException("Recipe not found.");
         var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
 
 

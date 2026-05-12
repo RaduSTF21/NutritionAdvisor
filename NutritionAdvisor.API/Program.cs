@@ -39,11 +39,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("RequirePremium", policy => policy.RequireClaim("subscription_plan", "Premium"));
-    options.AddPolicy("RequireActiveSubscription", policy => policy.RequireAssertion(VerifyActiveSubscription));
-});
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("RequirePremium", policy => policy.RequireClaim("subscription_plan", "Premium"))
+    .AddPolicy("RequireActiveSubscription", policy => policy.RequireAssertion(VerifyActiveSubscription));
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));

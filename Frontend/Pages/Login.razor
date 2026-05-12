@@ -1,6 +1,7 @@
 @page "/login"
 @using Blazored.LocalStorage
 @using Frontend.Auth
+@using System.Text.Json.Serialization
 @inject HttpClient Http
 @inject NavigationManager NavManager
 @inject ILocalStorageService LocalStorage
@@ -66,13 +67,8 @@
                 var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
                 if (result != null && !string.IsNullOrEmpty(result.Token))
                 {
-                    // 1. Store the token in browser storage.
                     await LocalStorage.SetItemAsync("authToken", result.Token);
-                    
-                    // 2. Notify the app that authentication succeeded.
                     ((CustomAuthStateProvider)AuthStateProvider).MarkUserAsAuthenticated(result.Token);
-                    
-                    // 3. Redirect straight to the profile page.
                     NavManager.NavigateTo("/profile");
                 }
             }
@@ -92,6 +88,15 @@
         }
     }
 
-    private sealed class LoginResponse { public string? Token { get; init; } }
-    private sealed class ErrorResponse { public string? Error { get; init; } }
+    private sealed class LoginResponse
+    {
+        [JsonPropertyName("token")]
+        public string? Token { get; set; }
+    }
+    
+    private sealed class ErrorResponse
+    {
+        [JsonPropertyName("error")]
+        public string? Error { get; set; }
+    }
 }

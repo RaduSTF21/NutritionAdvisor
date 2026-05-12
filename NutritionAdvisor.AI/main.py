@@ -7,7 +7,7 @@ import time
 import random
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
-from typing import List, Optional, Dict, Any, Union, Tuple
+from typing import List, Optional, Dict, Any, Union, Tuple, Annotated
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
@@ -394,7 +394,7 @@ def _extract_retry_seconds(exc: Exception) -> Optional[float]:
         return float(m.group(1)) if m else None
     except Exception: return None
 
-def _format_debug_response(data: Any, fallback: dict, prompt: str, payload: dict, config: dict, err: Optional[str], text: str) -> dict:
+def _format_debug_response(data: Any, prompt: str, payload: dict, config: dict, err: Optional[str], text: str) -> dict:
     info = {"prompt": prompt, "compact_payload": payload, "gen_config": config, "model": GEMINI_MODEL}
     if err: info["error"] = err
     else: info["raw_response"] = text[:20000]
@@ -497,7 +497,7 @@ def _handle_internet_search(request: UserProfileAI) -> Optional[Dict[str, Any]]:
     return {"mode": "internet", "userId": request.user_id, "recommendations": [_normalize_recommendation_item({"id": r.get("id"), "title": r.get("title"), "ingredients": r.get("ingredients"), "externalUrl": r.get("externalUrl")}) for r in results]}
 
 @app.post("/recommend")
-async def recommend_recipes(request: UserProfileAI, debug: bool = Query(False)) -> Dict[str, Any]:
+async def recommend_recipes(request: UserProfileAI, debug: Annotated[bool, Query(False)]) -> Dict[str, Any]:
     fallback = _fallback_recommendations(request)
     if genai is None or not GEMINI_API_KEYS: return fallback
     if internet_res := _handle_internet_search(request): return internet_res
@@ -511,17 +511,17 @@ async def recommend_recipes(request: UserProfileAI, debug: bool = Query(False)) 
     try:
         resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
         data = _parse_json_or_fallback(resp.text, fallback)
-        if debug: data = _format_debug_response(data, fallback, prompt, payload, config, None, getattr(resp, "text", ""))
+        if debug: data = _format_debug_response(data, prompt, payload, config, None, getattr(resp, "text", ""))
         
         result = {"mode": data.get("mode", "gemini") if isinstance(data, dict) else "gemini", "userId": request.user_id, "recommendations": [_normalize_recommendation_item(it) for it in ((data.get("recommendations") if isinstance(data, dict) else data) or fallback["recommendations"])]}
         _store_cached_gemini_response(cache_key, result)
         return result
     except Exception as e:
-        if debug: return _format_debug_response(fallback.copy(), fallback, prompt, payload, config, str(e), "")
+        if debug: return _format_debug_response(fallback.copy(), prompt, payload, config, str(e), "")
         return fallback
 
 @app.post("/meal-plan")
-async def generate_meal_plan(request: MealPlanRequest, debug: bool = Query(False)) -> Dict[str, Any]:
+async def generate_meal_plan(request: MealPlanRequest, debug: Annotated[bool, Query(False)]) -> Dict[str, Any]:
     fallback = _fallback_meal_plan(request)
     if genai is None or not GEMINI_API_KEYS: return fallback
 
@@ -535,7 +535,7 @@ async def generate_meal_plan(request: MealPlanRequest, debug: bool = Query(False
     try:
         resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
         data = _parse_json_or_fallback(resp.text, fallback)
-        if debug: data = _format_debug_response(data, fallback, prompt, payload, config, None, getattr(resp, "text", ""))
+        if debug: data = _format_debug_response(data, prompt, payload, config, None, getattr(resp, "text", ""))
         
         data["userId"] = request.user_id
         days_list = data.get("days") if isinstance(data, dict) else []
@@ -548,11 +548,11 @@ async def generate_meal_plan(request: MealPlanRequest, debug: bool = Query(False
         _store_cached_gemini_response(cache_key, data)
         return data
     except Exception as e:
-        if debug: return _format_debug_response(_fallback_meal_plan(request), fallback, prompt, payload, config, str(e), "")
+        if debug: return _format_debug_response(_fallback_meal_plan(request), prompt, payload, config, str(e), "")
         return fallback
 
 @app.post("/coach")
-async def coach(request: CoachRequest, debug: bool = Query(False)) -> Dict[str, Any]:
+async def coach(request: CoachRequest, debug: Annotated[bool, Query(False)]) -> Dict[str, Any]:
     fallback = _fallback_coach(request)
     if genai is None or not GEMINI_API_KEYS: return fallback
 
@@ -565,7 +565,7 @@ async def coach(request: CoachRequest, debug: bool = Query(False)) -> Dict[str, 
     try:
         resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
         data = _parse_json_or_fallback(resp.text, fallback)
-        if debug: data = _format_debug_response(data, fallback, prompt, payload, config, None, getattr(resp, "text", ""))
+        if debug: data = _format_debug_response(data, prompt, payload, config, None, getattr(resp, "text", ""))
         
         result = {"mode": data.get("mode", "gemini") if isinstance(data, dict) else "gemini", "userId": request.user_id, "answer": data.get("answer", fallback["answer"]) if isinstance(data, dict) else fallback["answer"], "tips": data.get("tips", fallback["tips"]) if isinstance(data, dict) else fallback["tips"]}
         _store_cached_gemini_response(cache_key, result)

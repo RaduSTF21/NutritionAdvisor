@@ -77,8 +77,8 @@ jobs:
           FALLBACK_CMD="pip"
 
           # AM ȘTERS --require-hashes. Acum pip va instala normal, respectând doar regula de binare.
-          pip install --only-binary :all: -r requirements.lock || $FALLBACK_CMD install -r requirements.lock
-          pip install --only-binary :all: pytest==8.1.1 pytest-cov==5.0.0 || $FALLBACK_CMD install pytest==8.1.1 pytest-cov==5.0.0
+          pip sync --only-binary :all: -r requirements.lock || $FALLBACK_CMD install -r requirements.lock
+          pip sync --only-binary :all: pytest==8.1.1 pytest-cov==5.0.0 || $FALLBACK_CMD install pytest==8.1.1 pytest-cov==5.0.0
 
       - name: Run Python tests with coverage
         run: |

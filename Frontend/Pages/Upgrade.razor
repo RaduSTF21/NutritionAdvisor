@@ -28,5 +28,9 @@
         }
     }
 
-    private sealed class CheckoutResponse { public string? Url { get; init; } }
+    private sealed class CheckoutResponse
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("url")]
+        public string? Url { get; set; }
+    }
 }

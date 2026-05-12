@@ -22,7 +22,6 @@
     }
     else
     {
-        @* Header: Imagine și Detalii Rapide *@
         <MudGrid>
             <MudItem xs="12" md="6">
                 <img src="@BuildImageUrl(recipe.ImageURL)" alt="@recipe.Title"
@@ -41,8 +40,6 @@
                 </MudItem>
             </MudGrid>
 
-            @* Tabel Nutrițional *@
-        
             <MudCard Elevation="2" Class="pa-4 mt-6">
                 <MudText Typo="Typo.h6" GutterBottom="true">Nutritional Details (per serving) 📊</MudText>
                 <MudSimpleTable Style="overflow-x: auto;">
@@ -73,8 +70,6 @@
                 </MudSimpleTable>
             </MudCard>
 
-            @* Tabel Ingrediente *@
-        
             <MudCard Elevation="2" Class="pa-4 mt-6">
                 <MudText Typo="Typo.h6" GutterBottom="true">Ingredients 🛒</MudText>
                 <MudSimpleTable Style="overflow-x: auto;" Hover="true">
@@ -105,19 +100,17 @@
                 </MudSimpleTable>
             </MudCard>
 
-            @* Instrucțiuni de Preparare *@
             <MudCard Elevation="2" Class="pa-4 mt-6">
                 <MudText Typo="Typo.h6" GutterBottom="true">Preparation Steps ✍️</MudText>
                 <MudText Typo="Typo.body1" Style="white-space: pre-wrap;" Class="mt-2">@recipe.Instructions</MudText>
             </MudCard>
 
-            @* Butoane de Acțiune *@
             <div class="d-flex justify-space-between align-center mt-10 mb-8">
                 <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" Color="Color.Default"
                            OnClick="@(() => Navigation.NavigateTo("/recipes"))">
                     Back to Catalog
                 </MudButton>
-            
+        
                 <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Restaurant" Color="Color.Success"
                            Size="Size.Large" Class="px-8 rounded-pill" Disabled="@isProcessing" OnClick="HandleEatRecipe">
                     @if (isProcessing)
@@ -140,7 +133,6 @@
     private RecipeModel? recipe;
     private bool isLoading = true;
     private bool isProcessing = false;
-    private const string NoImagePlaceholder = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='400'><rect width='100%25' height='100%25' fill='%23f3f4f6'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%236b7280' font-family='Arial' font-size='22'>No Image</text></svg>";
 
     private string BuildImageUrl(string? url)
     {
@@ -151,8 +143,6 @@
             return url;
 
         var baseUrl = Http.BaseAddress?.ToString().TrimEnd('/');
-        
-        // S6610 fix: Folosește char '/' în loc de string "/"
         return url.StartsWith('/') ? $"{baseUrl}{url}" : $"{baseUrl}/{url}";
     }
 
@@ -161,7 +151,6 @@
         try
         {
             isLoading = true;
-            // Preluăm detaliile rețetei folosind ID-ul din URL
             recipe = await Http.GetFromJsonAsync<RecipeModel>($"api/Recipes/{RecipeId}");
         }
         catch (Exception ex)
@@ -178,6 +167,7 @@
     private async Task HandleEatRecipe()
     {
         isProcessing = true;
+
         try
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -190,13 +180,10 @@
                 return;
             }
 
-            // Extragem NameIdentifier (UserID) din Claims
-            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                              ?? user.FindFirst("sub")?.Value;
+            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? user.FindFirst("sub")?.Value;
 
             if (Guid.TryParse(userIdClaim, out var userId))
             {
-                // Trimitem comanda către DailyLogController
                 var response = await Http.PostAsJsonAsync("api/DailyLog/log-meal", new
                 {
                     UserId = userId,
