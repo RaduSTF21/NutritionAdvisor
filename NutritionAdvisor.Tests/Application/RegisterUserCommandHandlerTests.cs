@@ -39,7 +39,7 @@ public class RegisterUserCommandHandlerTests
 
         await handler.Handle(new RegisterUserCommand("Radu", "radu@example.com", "Secret123!"), CancellationToken.None);
 
-        var exception = await Assert.ThrowsAsync<Exception>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             handler.Handle(new RegisterUserCommand("Another", "radu@example.com", "Secret456!"), CancellationToken.None));
 
         Assert.Contains("already in use", exception.Message, StringComparison.OrdinalIgnoreCase);
