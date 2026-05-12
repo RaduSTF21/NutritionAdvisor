@@ -16,7 +16,9 @@ namespace NutritionAdvisor.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-
+            // SonarCloud Fix: Explicitly state that downgrading this migration is not supported
+            // to prevent accidental data loss.
+            throw new NotSupportedException("Downgrading this migration is not supported.");
         }
     }
 }
