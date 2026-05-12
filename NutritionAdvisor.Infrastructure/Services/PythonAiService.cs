@@ -23,6 +23,7 @@ public class PythonAiService : IPythonAiService
         }
 
         _httpClient.BaseAddress = new Uri(pythonAiOptions.BaseUrl);
+        _httpClient.Timeout = TimeSpan.FromSeconds(Math.Max(30, pythonAiOptions.TimeoutSeconds));
     }
 
     public async Task<AiRecommendationResponseModel?> GetRecommendationsAsync(AiRecommendationRequestModel request)

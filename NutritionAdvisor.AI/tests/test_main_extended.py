@@ -1,6 +1,7 @@
 import sys
 import os
 import types
+import asyncio
 import pytest
 import json
 from unittest.mock import Mock, patch, MagicMock
@@ -42,6 +43,66 @@ def test_is_placeholder_url_edge_cases():
     assert ai_main._is_placeholder_url(None) is False
     assert ai_main._is_placeholder_url("not-a-url") is False
     assert ai_main._is_placeholder_url(123) is False
+
+
+def test_get_valid_external_url_prefers_verified_source(monkeypatch):
+    """Test that TheMealDB external URL selection keeps only verified URLs"""
+    def fake_is_url_accessible(url, timeout=6.0):
+        return url == "https://real-site.com/recipe"
+
+    monkeypatch.setattr(ai_main, "_is_url_accessible", fake_is_url_accessible)
+
+    meal = {
+        "strSource": "https://real-site.com/recipe",
+        "strYoutube": "https://youtube.com/watch?v=abc123",
+    }
+
+    assert ai_main._get_valid_external_url(meal) == "https://real-site.com/recipe"
+
+
+def test_get_valid_external_url_rejects_invalid_urls(monkeypatch):
+    """Test that invalid URLs are rejected instead of being passed through"""
+    monkeypatch.setattr(ai_main, "_is_url_accessible", lambda url, timeout=6.0: False)
+
+    meal = {
+        "strSource": "https://real-site.com/recipe",
+        "strYoutube": "https://youtube.com/watch?v=abc123",
+    }
+
+    assert ai_main._get_valid_external_url(meal) is None
+
+
+def test_enrich_single_item_keeps_verified_url(monkeypatch):
+    """Test that enrichment keeps a verified external URL intact"""
+    monkeypatch.setattr(ai_main, "_is_url_accessible", lambda url, timeout=6.0: url == "https://real-site.com/recipe")
+
+    item = {
+        "mealType": "Lunch",
+        "title": "Cached Recipe",
+        "externalUrl": "https://real-site.com/recipe",
+        "recipeId": "abc",
+    }
+
+    result = ai_main._enrich_single_item(item, "italian")
+
+    assert result["externalUrl"] == "https://real-site.com/recipe"
+    assert result["title"] == "Cached Recipe"
+
+
+def test_enrich_single_item_strips_invalid_url(monkeypatch):
+    """Test that enrichment removes invalid external URLs"""
+    monkeypatch.setattr(ai_main, "_is_url_accessible", lambda url, timeout=6.0: False)
+
+    item = {
+        "mealType": "Lunch",
+        "title": "Hallucinated Recipe",
+        "externalUrl": "https://fake-site.com/recipe",
+        "recipeId": "abc",
+    }
+
+    result = ai_main._enrich_single_item(item, "italian")
+
+    assert result["externalUrl"] is None
 
 
 # ==================== URL Validation Tests ====================
@@ -285,6 +346,71 @@ def test_generate_meal_plan_with_custom_calories():
     
     days = ai_main._generate_meal_plan_days_with_macros(request, 1)
     assert len(days) == 1
+
+
+def test_prewarm_meal_plan_recipes_populates_cache(monkeypatch):
+    """Test that prewarm stores a reusable set of external recipes"""
+    ai_main._PREWARMED_THEMEALDB_CACHE.clear()
+
+    recipes = [
+        {
+            "id": f"recipe{i}",
+            "title": f"Prewarmed Recipe {i}",
+            "ingredients": ["ingredient"],
+            "externalUrl": f"https://real-site.com/recipe-{i}",
+        }
+        for i in range(20)
+    ]
+
+    monkeypatch.setattr(ai_main, "_search_themealdb", lambda query, limit=20: recipes[:limit])
+
+    request = ai_main.MealPlanRequest(
+        user_id="test-user",
+        objective="italian",
+        preferred_cuisines=["italian"],
+    )
+
+    asyncio.run(ai_main._prewarm_meal_plan(request))
+
+    cached = ai_main._get_prewarmed_themealdb_recipes("italian", limit=20)
+    assert len(cached) == 20
+    assert cached[0]["title"] == "Prewarmed Recipe 0"
+
+
+def test_generate_meal_plan_uses_prewarmed_recipes(monkeypatch):
+    """Test that meal-plan generation reuses the prewarmed recipe cache"""
+    ai_main._PREWARMED_THEMEALDB_CACHE.clear()
+
+    recipes = [
+        {
+            "id": f"recipe{i}",
+            "title": f"Cached Recipe {i}",
+            "description": "cached",
+            "ingredients": ["ingredient"],
+            "externalUrl": f"https://real-site.com/recipe-{i}",
+        }
+        for i in range(20)
+    ]
+
+    ai_main._store_prewarmed_themealdb_recipes("italian", recipes)
+
+    def fail_live_search(query, limit=12):
+        raise AssertionError("Live search should not run when prewarmed recipes exist")
+
+    monkeypatch.setattr(ai_main, "_cached_search_themealdb", fail_live_search)
+
+    request = ai_main.MealPlanRequest(
+        user_id="test-user",
+        days=1,
+        objective="italian",
+        preferred_cuisines=["italian"],
+        available_recipes=[],
+    )
+
+    days = ai_main._generate_meal_plan_days_with_macros(request, 1)
+
+    assert len(days) == 1
+    assert all(item["title"].startswith("Cached Recipe") for item in days[0]["items"])
 
 
 # ==================== Fallback Recommendations Tests ====================

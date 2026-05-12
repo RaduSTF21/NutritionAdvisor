@@ -143,6 +143,12 @@ def _objective_score(recipe: Dict[str, Any], objective: Optional[str]) -> int:
 # --- THEMEALDB HELPERS ---
 _THEMEALDB_CACHE: Dict[str, Dict[str, Any]] = {}
 _THEMEALDB_CACHE_TTL = int(os.getenv("THEMEALDB_CACHE_TTL", "3600"))
+_PREWARMED_THEMEALDB_CACHE: Dict[str, Dict[str, Any]] = {}
+_PREWARMED_THEMEALDB_CACHE_TTL = int(os.getenv("PREWARMED_THEMEALDB_CACHE_TTL", "3600"))
+_PREWARMED_THEMEALDB_LIMIT = int(os.getenv("PREWARMED_THEMEALDB_LIMIT", "20"))
+_THEMEALDB_VALIDATE_EXTERNAL_URLS = os.getenv("THEMEALDB_VALIDATE_EXTERNAL_URLS", "true").strip().lower() in {"1", "true", "yes"}
+_THEMEALDB_SEARCH_TIMEOUT_SECONDS = float(os.getenv("THEMEALDB_SEARCH_TIMEOUT_SECONDS", "10"))
+_URL_VALIDATION_TIMEOUT_SECONDS = float(os.getenv("URL_VALIDATION_TIMEOUT_SECONDS", "10"))
 
 def _parse_ingredients_from_meal(raw: Dict[str, Any]) -> List[str]:
     ing_list = []
@@ -154,7 +160,9 @@ def _parse_ingredients_from_meal(raw: Dict[str, Any]) -> List[str]:
 
 def _get_valid_external_url(m: Dict[str, Any]) -> Optional[str]:
     for candidate_url in [m.get("strSource"), m.get("strYoutube")]:
-        if candidate_url and not _is_placeholder_url(candidate_url) and _is_url_accessible(candidate_url):
+        if not candidate_url or _is_placeholder_url(candidate_url):
+            continue
+        if not _THEMEALDB_VALIDATE_EXTERNAL_URLS or _is_url_accessible(candidate_url):
             return candidate_url
     return None
 
@@ -175,7 +183,7 @@ def _search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[str, An
     except ImportError: return []
     try:
         url = f"https://www.themealdb.com/api/json/v1/1/search.php?s={(query or '').strip()}"
-        resp = requests.get(url, timeout=6)
+        resp = requests.get(url, timeout=_THEMEALDB_SEARCH_TIMEOUT_SECONDS)
         if resp.status_code != 200: return []
         meals = resp.json().get("meals") or []
         return [_map_meal_db_item(m) for m in meals[:limit]]
@@ -189,6 +197,23 @@ def _cached_search_themealdb(query: Optional[str], limit: int = 5) -> List[Dict[
     data = _search_themealdb(query, limit=limit)
     _THEMEALDB_CACHE[key] = {"ts": now, "data": data}
     return data
+
+def _prewarm_themealdb_cache_key(query: Optional[str]) -> str:
+    return (query or "").strip().lower()
+
+def _store_prewarmed_themealdb_recipes(query: Optional[str], recipes: List[Dict[str, Any]]) -> None:
+    key = _prewarm_themealdb_cache_key(query)
+    _PREWARMED_THEMEALDB_CACHE[key] = {"ts": time.time(), "data": list(recipes)}
+
+def _get_prewarmed_themealdb_recipes(query: Optional[str], limit: int = 20) -> List[Dict[str, Any]]:
+    key = _prewarm_themealdb_cache_key(query)
+    entry = _PREWARMED_THEMEALDB_CACHE.get(key)
+    if not entry:
+        return []
+    if time.time() - entry.get("ts", 0) > _PREWARMED_THEMEALDB_CACHE_TTL:
+        _PREWARMED_THEMEALDB_CACHE.pop(key, None)
+        return []
+    return list(entry.get("data", [])[:max(1, limit)])
 
 # --- URL VALIDATION HELPERS ---
 _URL_VALIDATION_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -219,7 +244,7 @@ def _is_url_accessible(url: Optional[str], timeout: float = 6.0) -> bool:
     if cleaned_url in _URL_VALIDATION_CACHE and now - _URL_VALIDATION_CACHE[cleaned_url]["ts"] < _URL_VALIDATION_CACHE_TTL:
         return _URL_VALIDATION_CACHE[cleaned_url]["valid"]
     try:
-        is_valid = _perform_http_check(cleaned_url, timeout)
+        is_valid = _perform_http_check(cleaned_url, timeout or _URL_VALIDATION_TIMEOUT_SECONDS)
         _URL_VALIDATION_CACHE[cleaned_url] = {"ts": now, "valid": is_valid}
         return is_valid
     except Exception:
@@ -258,7 +283,9 @@ def _resolve_verified_external_recipe(recipe_title: str, objective: Optional[str
 def _enrich_single_item(item: Dict[str, Any], objective: Optional[str]) -> Dict[str, Any]:
     if not isinstance(item, dict): return item
     ext_url = item.get("externalUrl")
-    if ext_url and not _is_placeholder_url(ext_url) and _is_url_accessible(ext_url): return item
+    if ext_url and not _is_placeholder_url(ext_url) and (not _THEMEALDB_VALIDATE_EXTERNAL_URLS or _is_url_accessible(ext_url)): return item
+    if not _THEMEALDB_VALIDATE_EXTERNAL_URLS:
+        return item
     resolved = _resolve_verified_external_recipe(str(item.get("title") or item.get("mealType") or "Recipe"), objective)
     if resolved:
         res_id = resolved.get("recipeId")
@@ -366,7 +393,11 @@ def _generate_meal_plan_days_with_macros(request: MealPlanRequest, days_count: i
     meal_cals = {"Breakfast": int(daily_target * 0.30), "Lunch": int(daily_target * 0.35), "Dinner": int(daily_target * 0.35)}
     safe_recipes = [r for r in request.available_recipes if not _matches_avoid_list(r, request.allergies + request.disliked_ingredients)]
     ext_term = (request.preferred_cuisines[0] if request.preferred_cuisines else None) or request.objective or ""
-    external_recipes = _cached_search_themealdb(ext_term, limit=12) if len(safe_recipes) < 4 else []
+    external_recipes = []
+    if len(safe_recipes) < 4:
+        external_recipes = _get_prewarmed_themealdb_recipes(ext_term, limit=_PREWARMED_THEMEALDB_LIMIT)
+        if not external_recipes:
+            external_recipes = _cached_search_themealdb(ext_term, limit=12)
     prev_ids: Dict[str, Optional[str]] = dict.fromkeys(meal_types)
     return [_generate_single_day(d, meal_types, safe_recipes, external_recipes, prev_ids, meal_cals) for d in range(days_count)]
 
@@ -408,12 +439,45 @@ def _compact_recommendation_payload(request: UserProfileAI) -> Dict[str, Any]:
     return {"objective": request.objective, "searchQuery": request.search_query, "allergies": request.allergies[:6], "dislikedIngredients": request.disliked_ingredients[:6], "limit": max(1, min(request.limit, 5)), "availableRecipes": _compact_available_recipes(request.available_recipes, limit=6)}
 
 def _compact_meal_plan_payload(request: MealPlanRequest) -> Dict[str, Any]:
-    return {"objective": request.objective, "days": max(1, min(request.days, 7)), "allergies": request.allergies[:6], "dislikedIngredients": request.disliked_ingredients[:6], "weightKg": request.weight_kg, "availableRecipes": _compact_available_recipes(request.available_recipes, limit=6)}
+    return {
+        "objective": request.objective, 
+        "days": max(1, min(request.days, 7)), 
+        "allergies": request.allergies[:6], 
+        "dislikedIngredients": request.disliked_ingredients[:6], 
+        "weightKg": request.weight_kg, 
+        "heightCm": request.height_cm,
+        "age": request.age,
+        "gender": request.gender,
+        "dietType": request.diet_type,
+        "preferredCuisines": request.preferred_cuisines[:6],
+        "availableRecipes": _compact_available_recipes(request.available_recipes, limit=6)
+    }
 
 def _build_gemini_prompt(endpoint: str, payload: Dict[str, Any]) -> str:
     base = f"objective={payload.get('objective')}; allergies={payload.get('allergies')}; dislikes={payload.get('dislikedIngredients')};"
-    if endpoint == "recommend": return f"Return compact JSON only. {base} limit={payload.get('limit')}; recipes={_stable_json(payload.get('availableRecipes') or [])}. Schema: {{recommendations:[{{title,description,ingredients,externalUrl}}]}}."
-    if endpoint == "meal-plan": return f"Return compact JSON only. NO REPEATS. {base} days={payload.get('days')}; weightKg={payload.get('weightKg')}; recipes={_stable_json(payload.get('availableRecipes') or [])}. Schema: {{days:[{{date,title,calories,items:[{{mealType,title,recipeId,externalUrl,calories,protein,carbs,fats}}]}}]}}."
+    
+    if endpoint == "recommend": 
+        return f"Return compact JSON only. {base} limit={payload.get('limit')}; recipes={_stable_json(payload.get('availableRecipes') or [])}. Schema: {{recommendations:[{{title,description,ingredients,externalUrl}}]}}."
+    
+    if endpoint == "meal-plan": 
+        internet_instruction = (
+            "If local recipes are limited, MUST search internet for diverse options. "
+            "If few recipes available, fetch from internet for diversity. "
+        )
+        return (
+            f"Return compact JSON only. Create a diverse meal plan with NO REPEATS. "
+            f"{internet_instruction}"
+            f"objective={payload.get('objective')}; days={payload.get('days')}; "
+            f"weightKg={payload.get('weightKg')}; heightCm={payload.get('heightCm')}; "
+            f"age={payload.get('age')}; gender={payload.get('gender')}; "
+            f"dietType={payload.get('dietType')}; preferredCuisines={payload.get('preferredCuisines')}; "
+            f"allergies={payload.get('allergies')}; dislikes={payload.get('dislikedIngredients')}; "
+            f"availableRecipes={_stable_json(payload.get('availableRecipes') or [])}. "
+            "Never invent externalUrl or nutrition values. Use externalUrl only when you have a real verified source; otherwise set it to null. "
+            "Schema: {summary,days:[{date,title,description,calories,"
+            "items:[{mealType,title,recipeId,externalUrl,calories,protein,carbs,fats}]}]}."
+        )
+
     return f"Return compact JSON only. {base} message={payload.get('message')}. Schema: {{answer,tips:[...]}}."
 
 # --- AI CORE ENGINE ---
@@ -526,7 +590,6 @@ async def generate_meal_plan(request: MealPlanRequest, debug: Annotated[bool, Qu
     if genai is None or not GEMINI_API_KEYS: return fallback
 
     payload = _compact_meal_plan_payload(request)
-    payload["days"] = max(1, min(request.days, 14))
     cache_key = _compact_gemini_cache_key("meal-plan", payload)
     if cached := _get_cached_gemini_response(cache_key): return cached
 
@@ -573,12 +636,11 @@ async def coach(request: CoachRequest, debug: Annotated[bool, Query()] = False) 
     except Exception: return fallback
 
 async def _prewarm_meal_plan(request: MealPlanRequest):
-    payload = _compact_meal_plan_payload(request)
-    payload["days"] = max(1, min(request.days, 7))
+    query = (request.preferred_cuisines[0] if request.preferred_cuisines else None) or request.objective or ""
     try:
-        resp = await _genai_generate_with_retries(_build_gemini_prompt("meal-plan", payload), {"response_mime_type": JSON_MIME_TYPE}, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
-        if parsed := _parse_json_or_fallback(getattr(resp, "text", None), _fallback_meal_plan(request)):
-            if isinstance(parsed, dict): _store_cached_gemini_response(_compact_gemini_cache_key("meal-plan", payload), parsed)
+        recipes = await asyncio.to_thread(_search_themealdb, query, _PREWARMED_THEMEALDB_LIMIT)
+        if recipes:
+            _store_prewarmed_themealdb_recipes(query, recipes)
     except Exception: pass
 
 async def _prewarm_recommend(request: MealPlanRequest):
@@ -593,4 +655,5 @@ async def _prewarm_recommend(request: MealPlanRequest):
 @app.post("/prewarm")
 async def prewarm(request: MealPlanRequest) -> Dict[str, Any]:
     await asyncio.gather(_prewarm_meal_plan(request), _prewarm_recommend(request))
-    return {"status": "ok"}
+    query = (request.preferred_cuisines[0] if request.preferred_cuisines else None) or request.objective or ""
+    return {"status": "ok", "prewarmedRecipes": len(_get_prewarmed_themealdb_recipes(query, limit=_PREWARMED_THEMEALDB_LIMIT))}
