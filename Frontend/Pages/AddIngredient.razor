@@ -55,7 +55,8 @@
     </MudContainer>
 
 @code {
-    private IngredientFormModel model = new();
+    // S2933 Fix: Variabila este doar asignată la inițializare
+    private readonly IngredientFormModel model = new();
 
     private async Task SaveIngredient()
     {
@@ -77,7 +78,6 @@
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add($"{model.Name} added successfully!", Severity.Success);
-            // Opțional, ne întoarcem la pagina de rețetă
             Navigation.NavigateTo("/add-recipe");
         }
         else

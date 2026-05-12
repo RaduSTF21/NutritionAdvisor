@@ -68,7 +68,6 @@
                     </MudButton>
                 </div>
 
-                @* Am adaugat Immediate="true" pentru cautare instantanee *@
                 <MudTextField T="string" Label="Search existing..." Immediate="true" ValueChanged="OnSearch"
                               Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search" Variant="Variant.Outlined"
                               Margin="Margin.Dense" />
@@ -107,9 +106,11 @@
 </MudContainer>
 
 @code {
-    private RecipeCreateModel newRecipe = new();
+    // S2933 Fix: Variabilele sunt doar modificate intern, nu re-instanțiate
+    private readonly RecipeCreateModel newRecipe = new();
+    private readonly List<SelectedIngredient> selectedIngredients = new();
+    
     private List<IngredientSearchResult> foundIngredients = new();
-    private List<SelectedIngredient> selectedIngredients = new();
 
     protected override async Task OnInitializedAsync()
     {

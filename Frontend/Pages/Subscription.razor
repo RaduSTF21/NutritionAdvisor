@@ -24,8 +24,9 @@
                 <MudItem xs="12" md="6">
                     <MudCard Elevation="2" Class="pa-4 h-100">
                         <MudText Typo="Typo.h6">Current plan</MudText>
-                        <MudText Typo="Typo.h4" Color="@(IsPremium ? Color.Success : Color.Info)">@subscription.Plan</MudText>
-                        <MudChip T="string" Color="@(IsPremium ? Color.Success : Color.Default)" Class="mt-2">
+                        <MudText Typo="Typo.h4" Color="@(IsPremium? Color.Success: Color.Info)">@subscription.Plan
+                        </MudText>
+                        <MudChip T="string" Color="@(IsPremium? Color.Success: Color.Default)" Class="mt-2">
                             @subscription.Status
                         </MudChip>
 
@@ -38,44 +39,55 @@
                                 }
                                 else
                                 {
-                                    <span style="color: var(--mud-palette-warning);">Cancels on: <b>@subscription.ExpiresAt.Value.ToString("MMM dd, yyyy")</b> (No further charges)</span>
+                                    <span style="color: var(--mud-palette-warning);">Cancels on:
+                                        <b>@subscription.ExpiresAt.Value.ToString("MMM dd, yyyy")</b> (No further charges)</span>
+                                    }
+                                </MudText>
+                            }
+                        </MudCard>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudCard Elevation="2" Class="pa-4 h-100">
+                            <MudText Typo="Typo.h6">Available actions</MudText>
+                            <MudStack Spacing="2" Class="mt-3">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/ai">
+                                    Open AI hub
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="/recipes">
+                                    Browse recipes
+                                </MudButton>
+
+                                @if (!IsPremium)
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Tertiary"
+                                               StartIcon="@Icons.Material.Filled.Star" OnClick="HandleUpgrade" Class="mt-2">
+                                        Upgrade to Premium
+                                    </MudButton>
                                 }
-                            </MudText>
-                        }
-                    </MudCard>
-                </MudItem>
+                                else if (subscription.AutoRenew)
+                                {
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                                               StartIcon="@Icons.Material.Filled.Cancel" OnClick="HandleCancel" Class="mt-2"
+                                               Disabled="@isCanceling">
+                                        @if (isCanceling)
+                                        {
+                                            <span>Processing...</span>
+                                        }
+                                        else
+                                        {
 
-                <MudItem xs="12" md="6">
-                    <MudCard Elevation="2" Class="pa-4 h-100">
-                        <MudText Typo="Typo.h6">Available actions</MudText>
-                        <MudStack Spacing="2" Class="mt-3">
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/ai">
-                                Open AI hub
-                            </MudButton>
-                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="/recipes">
-                                Browse recipes
-                            </MudButton>
-
-                            @if (!IsPremium)
-                            {
-                                <MudButton Variant="Variant.Filled" Color="Color.Tertiary"
-                                           StartIcon="@Icons.Material.Filled.Star" OnClick="HandleUpgrade" Class="mt-2">
-                                    Upgrade to Premium
-                                </MudButton>
-                            }
-                            else if (subscription.AutoRenew)
-                            {
-                                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Cancel" OnClick="HandleCancel" Class="mt-2" Disabled="@isCanceling">
-                                    @if(isCanceling) { <span>Processing...</span> } else { <span>Cancel Subscription</span> }
-                                </MudButton>
-                            }
-                        </MudStack>
-                    </MudCard>
-                </MudItem>
-            </MudGrid>
-        }
-    </MudPaper>
-</MudContainer>
+                                            <span>Cancel Subscription</span>
+                                        }
+                                    </MudButton>
+                                }
+                            </MudStack>
+                        </MudCard>
+                    </MudItem>
+                </MudGrid>
+            }
+        </MudPaper>
+    </MudContainer>
 
 @code {
     private SubscriptionModel? subscription;
@@ -148,7 +160,8 @@
             var response = await Http.PostAsync("api/payments/cancel-subscription", null);
             if (response.IsSuccessStatusCode)
             {
-                Snackbar.Add("Subscription canceled. You will keep premium access until the end of your billing cycle.", Severity.Success);
+                Snackbar.Add("Subscription canceled. You will keep premium access until the end of your billing cycle.",
+Severity.Success);
                 await LoadSubscriptionAsync(); // Refresh to update the UI
             }
             else
@@ -162,5 +175,5 @@
         }
     }
 
-    private class CheckoutResponse { public string Url { get; set; } = string.Empty; }
+    private sealed class CheckoutResponse { public string Url { get; init; } = string.Empty; }
 }

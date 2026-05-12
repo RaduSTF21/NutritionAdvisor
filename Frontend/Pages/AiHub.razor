@@ -7,6 +7,7 @@
 @using System.Security.Claims
 @using System.Text.Json
 @using System.Text.Json.Serialization
+@using System.Globalization
 @inject HttpClient Http
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
@@ -96,7 +97,7 @@
                                 @foreach (var day in mealPlan.Days)
                                 {
                                     <MudPaper Class="pa-3 mt-2" Elevation="0" Style="background-color: rgba(255,255,255,0.55);">
-                                        <MudText Typo="Typo.body2"><b>@DateTime.Parse(day.Date).ToString("dd MMM") - @day.Title
+                                        <MudText Typo="Typo.body2"><b>@DateTime.Parse(day.Date, CultureInfo.InvariantCulture).ToString("dd MMM") - @day.Title
                                             (@day.Calories kcal)</b></MudText>
                                             <MudStack Spacing="1" Class="mt-2">
                                                 @foreach (var item in day.Items)
@@ -196,21 +197,13 @@
         }
 
         await LoadSubscriptionAsync();
-        // Trigger AI service pre-warm in background to reduce first-request latency
         _ = PrewarmAiAsync();
     }
 
     private async Task PrewarmAiAsync()
     {
-        try
-        {
-            // Fire-and-forget call to backend which will warm the AI/cache for this user
-            await Http.PostAsync("api/ai/prewarm", null);
-        }
-        catch
-        {
-            // ignore - prewarm is best-effort
-        }
+        try { await Http.PostAsync("api/ai/prewarm", null); }
+        catch { /* ignore */ }
     }
 
     private async Task LoadSubscriptionAsync()
@@ -236,15 +229,8 @@
         }
     }
 
-    private async Task LoadRecommendations()
-    {
-        await LoadRecommendationsInternal(false);
-    }
-
-    private async Task LoadInternetRecommendations()
-    {
-        await LoadRecommendationsInternal(true);
-    }
+    private async Task LoadRecommendations() => await LoadRecommendationsInternal(false);
+    private async Task LoadInternetRecommendations() => await LoadRecommendationsInternal(true);
 
     private async Task LoadRecommendationsInternal(bool useInternetSearch)
     {
@@ -313,7 +299,7 @@ AiRecommendationRequestModel(recommendationLimit, recommendationSearchQuery, use
             DailyPlans = generatedMealPlan.Days
                 .Select(day => new CreateWeeklyMealPlanDayRequest
                 {
-                    Date = DateTime.SpecifyKind(DateTime.Parse(day.Date).Date, DateTimeKind.Utc),
+                    Date = DateTime.SpecifyKind(DateTime.Parse(day.Date, CultureInfo.InvariantCulture).Date, DateTimeKind.Utc),
                     TargetCalories = day.Calories,
                     IsAIGenerated = true,
                     Items = day.Items
@@ -346,31 +332,31 @@ AiRecommendationRequestModel(recommendationLimit, recommendationSearchQuery, use
         }
     }
 
-    private class CheckoutResponse { public string Url { get; set; } = string.Empty; }
+    private sealed class CheckoutResponse { public string Url { get; init; } = string.Empty; }
 
     private sealed class CreateWeeklyMealPlanRequest
     {
-        public List<CreateWeeklyMealPlanDayRequest> DailyPlans { get; set; } = new();
+        public List<CreateWeeklyMealPlanDayRequest> DailyPlans { get; init; } = new();
     }
 
     private sealed class CreateWeeklyMealPlanDayRequest
     {
-        public DateTime Date { get; set; }
-        public int TargetCalories { get; set; }
-        public bool IsAIGenerated { get; set; }
-        public List<CreateMealPlanItemRequest> Items { get; set; } = new();
+        public DateTime Date { get; init; }
+        public int TargetCalories { get; init; }
+        public bool IsAIGenerated { get; init; }
+        public List<CreateMealPlanItemRequest> Items { get; init; } = new();
     }
 
     private sealed class CreateMealPlanItemRequest
     {
-        public MealType MealType { get; set; }
-        public Guid? RecipeId { get; set; }
-        public string? Title { get; set; }
-        public string? ExternalTitle { get; set; }
-        public string? ExternalUrl { get; set; }
-        public float Calories { get; set; }
-        public float Protein { get; set; }
-        public float Carbs { get; set; }
-        public float Fats { get; set; }
+        public MealType MealType { get; init; }
+        public Guid? RecipeId { get; init; }
+        public string? Title { get; init; }
+        public string? ExternalTitle { get; init; }
+        public string? ExternalUrl { get; init; }
+        public float Calories { get; init; }
+        public float Protein { get; init; }
+        public float Carbs { get; init; }
+        public float Fats { get; init; }
     }
 }

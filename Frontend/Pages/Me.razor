@@ -215,7 +215,6 @@
         </MudContainer>
 
 @code {
-    // Profile
     private bool editing = false;
     private UserProfile user = new()
     {
@@ -226,16 +225,13 @@
         Allergies = ""
     };
 
-    // Allergies
     private readonly List<AllergyVm> allergies = new();
     private AllergyVm newAllergy = new() { SeverityLevel = AllergySeverity.Mild };
 
-    // Preferences
     private FoodPreferenceVm prefModel = new();
     private string preferredCuisinesText = string.Empty;
     private string dislikedIngredientsText = string.Empty;
 
-    // Overview
     private UserProfile? userProfile;
     private int recipeCount = 0;
     private List<DailyLog> recentLogs = new();
@@ -301,7 +297,7 @@
             }
         }
         
-        editing = true; // Fallback to editing if not successful or null
+        editing = true;
     }
 
     private async Task SaveProfile()
@@ -437,7 +433,8 @@
         else Snackbar.Add("Could not save preferences.", Severity.Error);
     }
 
-    private List<string> ParseCsv(string input) => input.Split(',', StringSplitOptions.TrimEntries |
+    // Făcut 'static' pentru S2325
+    private static List<string> ParseCsv(string input) => input.Split(',', StringSplitOptions.TrimEntries |
 StringSplitOptions.RemoveEmptyEntries).ToList();
 
     private async Task LoadRecipeCount()
@@ -535,7 +532,8 @@ metric.Target <= 0 ? 0 : metric.Value / metric.Target *
         return $"<div><div style='font-size:12px;opacity:.7;margin-bottom:8px;'>Window: {windowLabel}</div>{rows}</div>";
     }
 
-    private IReadOnlyList<NutritionMetric> BuildNutritionMetrics(NutritionTotals totals, double calorieTarget)
+    // Făcut 'static' pentru S2325
+    private static IReadOnlyList<NutritionMetric> BuildNutritionMetrics(NutritionTotals totals, double calorieTarget)
     {
         return new List<NutritionMetric>
         {
@@ -581,15 +579,16 @@ metric.Target <= 0 ? 0 : metric.Value / metric.Target *
 
     private sealed record NutritionMetric(string Label, double Value, double Target, string Unit, string Color);
 
-    // Small view models
-    private class AllergyVm
+    // Făcut 'sealed' și `get; init;` pentru S3260, S1144, S3459
+    private sealed class AllergyVm
     {
-        public Guid Id { get; set; }
+        public Guid Id { get; init; }
         public string AllergenName { get; set; } = string.Empty;
         public AllergySeverity SeverityLevel { get; set; }
     }
     
-    private class FoodPreferenceVm
+    // Făcut 'sealed' pentru S3260
+    private sealed class FoodPreferenceVm
     {
         public DietType DietType { get; set; } = DietType.None;
         public List<string> PreferredCuisines { get; set; } = new();

@@ -150,8 +150,10 @@
         if (url.StartsWith("http"))
             return url;
 
-        var baseUrl = Http.BaseAddress?.ToString().TrimEnd('/') ?? string.Empty;
-        return url.StartsWith("/") ? $"{baseUrl}{url}" : $"{baseUrl}/{url}";
+        var baseUrl = Http.BaseAddress?.ToString().TrimEnd('/');
+        
+        // S6610 fix: Folosește char '/' în loc de string "/"
+        return url.StartsWith('/') ? $"{baseUrl}{url}" : $"{baseUrl}/{url}";
     }
 
     protected override async Task OnInitializedAsync()

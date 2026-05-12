@@ -83,7 +83,8 @@
 
 @code {
     private List<RecipeModel>? recipes;
-    private const string NoImagePlaceholder = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='200'><rect width='100%25' height='100%25' fill='%23f3f4f6'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%236b7280' font-family='Arial' font-size='16'>No Image</text></svg>";
+    
+    // Am șters variabila 'NoImagePlaceholder' pentru a repara S1144
 
     protected override async Task OnInitializedAsync()
     {
@@ -105,7 +106,9 @@
         if (url.StartsWith("http"))
             return url;
 
-        var baseUrl = Http.BaseAddress?.ToString().TrimEnd('/') ?? string.Empty;
-        return url.StartsWith("/") ? $"{baseUrl}{url}" : $"{baseUrl}/{url}";
+        var baseUrl = Http.BaseAddress?.ToString().TrimEnd('/');
+        
+        // Am schimbat "/" cu '/' pentru a repara S6610 (use char instead of string)
+        return url.StartsWith('/') ? $"{baseUrl}{url}" : $"{baseUrl}/{url}";
     }
 }
