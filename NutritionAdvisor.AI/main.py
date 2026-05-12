@@ -20,10 +20,13 @@ except ImportError:
     genai = None  # type: ignore[assignment]
     HAS_GENAI = False
 
+# --- CONSTANTE GENERALE ---
+ERROR_GENAI_NOT_CONFIGURED = "GenAI not configured."
+
 # --- CONFIGURARE GEMINI ---
 _raw_keys = os.getenv("GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY", ""))
 GEMINI_API_KEYS = [k.strip() for k in _raw_keys.split(",") if k.strip()]
-GEMINI_MODEL = str(os.getenv("GEMINI_MODEL", "gemini-2.0-flash"))
+GEMINI_MODEL = str(os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
 GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "0"))
 GEMINI_CACHE_TTL_SECONDS = int(os.getenv("GEMINI_CACHE_TTL_SECONDS", "600"))
 
@@ -256,7 +259,7 @@ _URL_VALIDATION_CACHE_TTL = int(os.getenv("URL_VALIDATION_CACHE_TTL", "86400"))
 def _homepage_like_path(parsed_url: Any) -> bool:
     return (getattr(parsed_url, "path", "") or "").strip().lower() in {"", "/", "/home", "/index", "/index.html"}
 
-def _is_placeholder_url(url: Optional[str]) -> bool:
+def _is_placeholder_url(url: Any) -> bool:
     if not url or not isinstance(url, str): return False
     try: host = urlsplit(url.strip()).netloc.lower()
     except Exception: return False
@@ -273,7 +276,7 @@ def _perform_http_check(cleaned_url: str, timeout: float) -> bool:
     return 200 <= response.status_code < 300 and not redirected
 
 def _is_url_accessible(url: Optional[str], timeout: float = 6.0) -> bool:
-    if not url or not isinstance(url, str) or not url.strip().startswith(("http://", "https://")): return False
+    if not url or not isinstance(url, str) or not url.strip().startswith(("https://")): return False
     cleaned_url, now = url.strip(), time.time()
     if cleaned_url in _URL_VALIDATION_CACHE and now - _URL_VALIDATION_CACHE[cleaned_url]["ts"] < _URL_VALIDATION_CACHE_TTL:
         return _URL_VALIDATION_CACHE[cleaned_url]["valid"]
@@ -507,7 +510,6 @@ def _build_gemini_prompt(endpoint: str, payload: Dict[str, Any]) -> str:
             f"dietType={payload.get('dietType')}; preferredCuisines={payload.get('preferredCuisines')}; "
             f"allergies={payload.get('allergies')}; dislikes={payload.get('dislikedIngredients')}; "
             f"availableRecipes={_stable_json(payload.get('availableRecipes') or [])}. "
-            "Never invent externalUrl or nutrition values. Use externalUrl only when you have a real verified source; otherwise set it to null. "
             "Schema: {summary,days:[{date,title,description,calories,"
             "items:[{mealType,title,recipeId,externalUrl,calories,protein,carbs,fats}]}]}."
         )
@@ -573,12 +575,32 @@ async def _attempt_genai_call(client, model_name, contents, config):
     async with (_AI_SEMAPHORE or asyncio.Semaphore(1)):
         return await asyncio.to_thread(lambda c=client: c.models.generate_content(model=model_name, contents=contents, config=config))
 
+def _handle_gemini_exception(e: Exception, api_key: str, model_name: str, endpoint: str, trace_id: str, key_label: str) -> Tuple[bool, bool]:
+    """Extracted exception handling to reduce cognitive complexity of _try_generate_single_key."""
+    reason = _classify_gemini_error(e)
+    exhausted = reason == "rate_limit_or_quota"
+    
+    if reason == "key_leaked":
+        _KEY_QUARANTINE_TRACKER[api_key] = time.time()
+        
+    _emit_gemini_marker(endpoint, trace_id, "error", model=model_name, detail=f"{type(e).__name__}: {e}", quota_exhausted=exhausted, key_label=key_label)
+    
+    return exhausted, reason == "key_leaked"
+
+async def _sleep_for_retry(e: Exception, attempt: int) -> None:
+    retry_seconds = _extract_retry_seconds(e) or (min(8, 2 ** attempt) + random.uniform(0, 1))
+    try:
+        await asyncio.sleep(retry_seconds)
+    except Exception:
+        pass
+
 async def _try_generate_single_key(api_key: str, model_name: str, contents: str, gen_config: Dict[str, Any], max_retries: int, trace_id: str, endpoint: str) -> Tuple[Any, Optional[Exception], bool]:
     if genai is None:
-        raise RuntimeError("GenAI not configured.")
+        raise RuntimeError(ERROR_GENAI_NOT_CONFIGURED)
     client = genai.Client(api_key=str(api_key))
     key_label = _gemini_key_label(api_key)
     last_exc = None
+    
     for attempt in range(max_retries + 1):
         try:
             res = await _attempt_genai_call(client, model_name, contents, gen_config)
@@ -587,26 +609,24 @@ async def _try_generate_single_key(api_key: str, model_name: str, contents: str,
             return res, None, False
         except Exception as e:
             last_exc = e
-            reason = _classify_gemini_error(e)
-            exhausted = reason == "rate_limit_or_quota"
-            if reason == "key_leaked":
-                _KEY_QUARANTINE_TRACKER[api_key] = time.time()
-            _emit_gemini_marker(endpoint, trace_id, "error", model=model_name, detail=f"{type(e).__name__}: {e}", quota_exhausted=exhausted, key_label=key_label)
+            exhausted, is_leaked = _handle_gemini_exception(e, api_key, model_name, endpoint, trace_id, key_label)
+            
             if exhausted:
                 return None, e, True
-            if reason == "key_leaked":
+            if is_leaked:
                 return None, e, False
-            if attempt >= max_retries: break
-            retry_seconds = _extract_retry_seconds(e) or (min(8, 2 ** attempt) + random.uniform(0, 1))
-            try: await asyncio.sleep(retry_seconds)
-            except Exception: pass
+            if attempt >= max_retries: 
+                break
+                
+            await _sleep_for_retry(e, attempt)
+            
     return None, last_exc, False
 
 async def _genai_generate_with_retries(contents: str, gen_config: Dict[str, Any], model: Optional[str] = None, max_retries: int = 0, trace_id: Optional[str] = None, endpoint: str = "gemini") -> Any:
     trace_id = trace_id or uuid.uuid4().hex[:10]
     if genai is None or not GEMINI_API_KEYS:
-        _emit_gemini_marker(endpoint, trace_id, "disabled", model=model, detail="GenAI not configured")
-        raise RuntimeError("GenAI not configured.")
+        _emit_gemini_marker(endpoint, trace_id, "disabled", model=model, detail=ERROR_GENAI_NOT_CONFIGURED)
+        raise RuntimeError(ERROR_GENAI_NOT_CONFIGURED)
     model_name = str(model or GEMINI_MODEL)
     last_exc = None
     valid_keys = _ordered_gemini_keys()
@@ -690,7 +710,7 @@ async def recommend_recipes(request: UserProfileAI, debug: Annotated[bool, Query
     trace_id = uuid.uuid4().hex[:10]
     fallback = _fallback_recommendations(request)
     if genai is None or not GEMINI_API_KEYS:
-        _emit_gemini_marker("recommend", trace_id, "disabled", detail="GenAI not configured")
+        _emit_gemini_marker("recommend", trace_id, "disabled", detail=ERROR_GENAI_NOT_CONFIGURED)
         return fallback
     if internet_res := _handle_internet_search(request):
         return internet_res
@@ -720,7 +740,7 @@ async def generate_meal_plan(request: MealPlanRequest, debug: Annotated[bool, Qu
     trace_id = uuid.uuid4().hex[:10]
     fallback = _fallback_meal_plan(request)
     if genai is None or not GEMINI_API_KEYS:
-        _emit_gemini_marker("meal-plan", trace_id, "disabled", detail="GenAI not configured")
+        _emit_gemini_marker("meal-plan", trace_id, "disabled", detail=ERROR_GENAI_NOT_CONFIGURED)
         return fallback
 
     payload = _compact_meal_plan_payload(request)
@@ -755,7 +775,7 @@ async def coach(request: CoachRequest, debug: Annotated[bool, Query()] = False) 
     trace_id = uuid.uuid4().hex[:10]
     fallback = _fallback_coach(request)
     if genai is None or not GEMINI_API_KEYS:
-        _emit_gemini_marker("coach", trace_id, "disabled", detail="GenAI not configured")
+        _emit_gemini_marker("coach", trace_id, "disabled", detail=ERROR_GENAI_NOT_CONFIGURED)
         return fallback
 
     payload = {"objective": request.objective, "message": request.message[:500], "context": (request.context or "")[:300]}
