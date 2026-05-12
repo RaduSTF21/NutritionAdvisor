@@ -82,8 +82,7 @@
                                          Class="mt-3" Disabled="@(!CanUsePremium)" />
                         <MudButton Variant="Variant.Filled" Color="Color.Secondary"
                                    Class="@($"mt-3 ai-mealplan-button {(isLoadingMealPlan ? "ai-mealplan-button--loading" : string.Empty)}")"
-                                   FullWidth="true"
-                                   OnClick="GenerateMealPlan" Disabled="@(!CanUsePremium || isLoadingMealPlan)">
+                                   FullWidth="true" OnClick="GenerateMealPlan" Disabled="@(!CanUsePremium || isLoadingMealPlan)">
                             @if (isLoadingMealPlan)
                             {
                                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
@@ -182,6 +181,7 @@
     private bool isLoadingRecommendations;
     private bool isLoadingMealPlan;
     private bool isLoadingCoach;
+    private Task? prewarmTask;
     private List<AiRecommendationItemModel> recommendations = new();
     private AiMealPlanResponseModel? mealPlan;
     private AiCoachResponseModel? coach;
@@ -209,7 +209,7 @@
         }
 
         await LoadSubscriptionAsync();
-        _ = PrewarmAiAsync();
+        prewarmTask = PrewarmAiAsync();
     }
 
     private async Task PrewarmAiAsync()
@@ -266,6 +266,11 @@ AiRecommendationRequestModel(recommendationLimit, recommendationSearchQuery, use
         isLoadingMealPlan = true;
         try
         {
+            if (prewarmTask != null)
+            {
+                await prewarmTask;
+            }
+
             var response = await Http.PostAsJsonAsync("api/ai/generate-meal-plan", new AiMealPlanRequestModel(mealPlanDays));
             if (response.IsSuccessStatusCode)
             {

@@ -5,6 +5,7 @@ import uuid
 import asyncio
 import time
 import random
+import hashlib
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 from typing import List, Optional, Dict, Any, Union, Tuple, Annotated
@@ -33,11 +34,6 @@ try:
     _AI_SEMAPHORE = asyncio.Semaphore(int(os.getenv("AI_MAX_CONCURRENCY", "2")))
 except Exception:
     _AI_SEMAPHORE = asyncio.Semaphore(2)
-
-if GEMINI_API_KEYS and HAS_GENAI:
-    print(f"Loaded {len(GEMINI_API_KEYS)} Gemini API keys. Using model: {GEMINI_MODEL}")
-else:
-    print("WARNING: GEMINI_API_KEY not set or google-genai not installed. Using local fallbacks.")
 
 _GEMINI_RESPONSE_CACHE: Dict[str, Dict[str, Any]] = {}
 app = FastAPI(title="Nutrition AI Service")
@@ -93,6 +89,15 @@ def _is_guid_string(value: Any) -> bool:
 def _stable_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
+def _gemini_key_fingerprint(api_key: str) -> str:
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:10]
+
+def _gemini_key_label(api_key: str) -> str:
+    try:
+        return f"k{GEMINI_API_KEYS.index(api_key) + 1}:{_gemini_key_fingerprint(api_key)}"
+    except ValueError:
+        return f"k?:{_gemini_key_fingerprint(api_key)}"
+
 def _compact_recipe(recipe: Dict[str, Any]) -> Dict[str, Any]:
     ingredients = recipe.get("ingredients") or []
     ingredients = [str(item) for item in ingredients[:6]] if isinstance(ingredients, list) else [str(ingredients)]
@@ -118,6 +123,35 @@ def _get_cached_gemini_response(cache_key: str) -> Optional[Dict[str, Any]]:
 
 def _store_cached_gemini_response(cache_key: str, data: Dict[str, Any]) -> None:
     _GEMINI_RESPONSE_CACHE[cache_key] = {"ts": time.time(), "data": data}
+
+def _classify_gemini_error(exc: Exception) -> str:
+    message = f"{type(exc).__name__}: {exc}".lower()
+    if "reported as leaked" in message or "key was reported as leaked" in message:
+        return "key_leaked"
+    if "resource_exhausted" in message or "429" in message or "quota" in message or "rate limit" in message:
+        return "rate_limit_or_quota"
+    if "permission denied" in message or "invalid api key" in message or "unauthorized" in message:
+        return "auth_or_permission"
+    if "deadline exceeded" in message or "timeout" in message:
+        return "timeout"
+    return type(exc).__name__
+
+def _emit_gemini_marker(endpoint: str, trace_id: str, status: str, *, model: Optional[str] = None, detail: Optional[str] = None, response_chars: Optional[int] = None, cache_hit: bool = False, quota_exhausted: bool = False, key_label: Optional[str] = None) -> None:
+    marker = {
+        "endpoint": endpoint,
+        "traceId": trace_id,
+        "status": status,
+        "model": model or GEMINI_MODEL,
+        "cacheHit": cache_hit,
+        "quotaExhausted": quota_exhausted,
+    }
+    if key_label:
+        marker["key"] = key_label
+    if detail:
+        marker["detail"] = detail[:300]
+    if response_chars is not None:
+        marker["responseChars"] = response_chars
+    print(f"[GEMINI_MARKER] {json.dumps(marker, ensure_ascii=False, sort_keys=True)}", flush=True)
 
 def _recipe_text(recipe: Dict[str, Any]) -> str:
     ingredients = recipe.get("ingredients") or []
@@ -482,7 +516,12 @@ def _build_gemini_prompt(endpoint: str, payload: Dict[str, Any]) -> str:
 
 # --- AI CORE ENGINE ---
 _KEY_EXHAUSTION_TRACKER: Dict[str, float] = {}
+_KEY_QUARANTINE_TRACKER: Dict[str, float] = {}
+_KEY_SUCCESS_TRACKER: Dict[str, float] = {}
 _KEY_ROTATION_CURSOR = 0
+_KEY_RECENT_SUCCESS_TTL = int(os.getenv("GEMINI_KEY_SUCCESS_TTL_SECONDS", "21600"))
+_KEY_EXHAUSTION_TTL = int(os.getenv("GEMINI_KEY_EXHAUSTION_TTL_SECONDS", "86400"))
+_KEY_QUARANTINE_TTL = int(os.getenv("GEMINI_KEY_QUARANTINE_TTL_SECONDS", "604800"))
 
 def _rotated_keys(keys: List[str]) -> List[str]:
     global _KEY_ROTATION_CURSOR
@@ -491,41 +530,93 @@ def _rotated_keys(keys: List[str]) -> List[str]:
     _KEY_ROTATION_CURSOR = (_KEY_ROTATION_CURSOR + 1) % len(keys)
     return keys[start:] + keys[:start]
 
+def _preferred_gemini_key(keys: List[str]) -> Optional[str]:
+    if not keys:
+        return None
+
+    now = time.time()
+    recent_success = [k for k in keys if k in _KEY_SUCCESS_TRACKER and now - _KEY_SUCCESS_TRACKER[k] <= _KEY_RECENT_SUCCESS_TTL]
+    if recent_success:
+        return max(recent_success, key=lambda k: _KEY_SUCCESS_TRACKER.get(k, 0))
+
+    eligible = [
+        k for k in keys
+        if (k not in _KEY_EXHAUSTION_TRACKER or now - _KEY_EXHAUSTION_TRACKER[k] > _KEY_EXHAUSTION_TTL)
+        and (k not in _KEY_QUARANTINE_TRACKER or now - _KEY_QUARANTINE_TRACKER[k] > _KEY_QUARANTINE_TTL)
+    ]
+    if eligible:
+        return eligible[0]
+
+    return keys[0]
+
+def _ordered_gemini_keys() -> List[str]:
+    keys = list(GEMINI_API_KEYS)
+    if not keys:
+        return []
+
+    preferred = _preferred_gemini_key(keys)
+    ordered = [k for k in keys if k != preferred]
+    if preferred:
+        ordered.insert(0, preferred)
+
+    fresh = [
+        k for k in ordered
+        if (k not in _KEY_EXHAUSTION_TRACKER or time.time() - _KEY_EXHAUSTION_TRACKER[k] > _KEY_EXHAUSTION_TTL)
+        and (k not in _KEY_QUARANTINE_TRACKER or time.time() - _KEY_QUARANTINE_TRACKER[k] > _KEY_QUARANTINE_TTL)
+    ]
+    if fresh:
+        return fresh
+
+    return ordered
+
 async def _attempt_genai_call(client, model_name, contents, config):
     async with (_AI_SEMAPHORE or asyncio.Semaphore(1)):
         return await asyncio.to_thread(lambda c=client: c.models.generate_content(model=model_name, contents=contents, config=config))
 
-async def _try_generate_single_key(api_key: str, model_name: str, contents: str, gen_config: Dict[str, Any], max_retries: int) -> Tuple[Any, Optional[Exception], bool]:
+async def _try_generate_single_key(api_key: str, model_name: str, contents: str, gen_config: Dict[str, Any], max_retries: int, trace_id: str, endpoint: str) -> Tuple[Any, Optional[Exception], bool]:
     if genai is None:
         raise RuntimeError("GenAI not configured.")
     client = genai.Client(api_key=str(api_key))
+    key_label = _gemini_key_label(api_key)
     last_exc = None
     for attempt in range(max_retries + 1):
         try:
             res = await _attempt_genai_call(client, model_name, contents, gen_config)
+            _KEY_SUCCESS_TRACKER[api_key] = time.time()
+            _emit_gemini_marker(endpoint, trace_id, "success", model=model_name, response_chars=len(getattr(res, "text", "") or ""), key_label=key_label)
             return res, None, False
         except Exception as e:
             last_exc = e
-            err_str = str(e)
-            if "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
+            reason = _classify_gemini_error(e)
+            exhausted = reason == "rate_limit_or_quota"
+            if reason == "key_leaked":
+                _KEY_QUARANTINE_TRACKER[api_key] = time.time()
+            _emit_gemini_marker(endpoint, trace_id, "error", model=model_name, detail=f"{type(e).__name__}: {e}", quota_exhausted=exhausted, key_label=key_label)
+            if exhausted:
                 return None, e, True
+            if reason == "key_leaked":
+                return None, e, False
             if attempt >= max_retries: break
             retry_seconds = _extract_retry_seconds(e) or (min(8, 2 ** attempt) + random.uniform(0, 1))
             try: await asyncio.sleep(retry_seconds)
             except Exception: pass
     return None, last_exc, False
 
-async def _genai_generate_with_retries(contents: str, gen_config: Dict[str, Any], model: Optional[str] = None, max_retries: int = 0) -> Any:
-    if genai is None or not GEMINI_API_KEYS: raise RuntimeError("GenAI not configured.")
+async def _genai_generate_with_retries(contents: str, gen_config: Dict[str, Any], model: Optional[str] = None, max_retries: int = 0, trace_id: Optional[str] = None, endpoint: str = "gemini") -> Any:
+    trace_id = trace_id or uuid.uuid4().hex[:10]
+    if genai is None or not GEMINI_API_KEYS:
+        _emit_gemini_marker(endpoint, trace_id, "disabled", model=model, detail="GenAI not configured")
+        raise RuntimeError("GenAI not configured.")
     model_name = str(model or GEMINI_MODEL)
     last_exc = None
-    valid_keys = [k for k in GEMINI_API_KEYS if k not in _KEY_EXHAUSTION_TRACKER or time.time() - _KEY_EXHAUSTION_TRACKER[k] > 3600]
+    valid_keys = _ordered_gemini_keys()
     
     for api_key in _rotated_keys(valid_keys or list(GEMINI_API_KEYS)):
-        res, exc, exhausted = await _try_generate_single_key(api_key, model_name, contents, gen_config, max_retries)
+        res, exc, exhausted = await _try_generate_single_key(api_key, model_name, contents, gen_config, max_retries, trace_id, endpoint)
         if res: return res
         if exhausted: _KEY_EXHAUSTION_TRACKER[api_key] = time.time()
         last_exc = exc
+    _emit_gemini_marker(endpoint, trace_id, "failed", model=model_name, detail=f"{type(last_exc).__name__}: {last_exc}" if last_exc else "GenAI generate failed", quota_exhausted=isinstance(last_exc, Exception) and _classify_gemini_error(last_exc) == "rate_limit_or_quota")
     raise last_exc or RuntimeError("GenAI generate failed.")
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -548,10 +639,44 @@ def _normalize_recommendation_item(item: Any) -> Dict[str, Any]:
     if not isinstance(item, dict): return {"id": None, "title": str(item), "totalCalories": 500, "externalUrl": None, "ingredients": []}
     return {"id": str(item.get("id")) if item.get("id") else None, "title": str(item.get("title", "Recipe")), "totalCalories": _safe_int(item.get("totalCalories", 500), 500), "externalUrl": str(item.get("externalUrl")) if item.get("externalUrl") else None, "ingredients": item.get("ingredients", [])}
 
+if GEMINI_API_KEYS and HAS_GENAI:
+    print(f"Loaded {len(GEMINI_API_KEYS)} Gemini API keys. Using model: {GEMINI_MODEL}")
+    print(f"Gemini key fingerprints: {[ _gemini_key_fingerprint(k) for k in GEMINI_API_KEYS ]}", flush=True)
+else:
+    print("WARNING: GEMINI_API_KEY not set or google-genai not installed. Using local fallbacks.")
+
 # --- ENDPOINTS ---
 @app.get("/")
 def read_root() -> Dict[str, str]:
     return {"status": f"Nutrition AI service running powered by {GEMINI_MODEL}"}
+
+
+@app.get("/debug/gemini-health")
+def gemini_health() -> Dict[str, Any]:
+    now = time.time()
+    keys = []
+    for index, api_key in enumerate(GEMINI_API_KEYS, start=1):
+        state = "healthy"
+        if api_key in _KEY_QUARANTINE_TRACKER and now - _KEY_QUARANTINE_TRACKER[api_key] <= _KEY_QUARANTINE_TTL:
+            state = "quarantined"
+        elif api_key in _KEY_EXHAUSTION_TRACKER and now - _KEY_EXHAUSTION_TRACKER[api_key] <= _KEY_EXHAUSTION_TTL:
+            state = "exhausted"
+        elif api_key in _KEY_SUCCESS_TRACKER and now - _KEY_SUCCESS_TRACKER[api_key] <= _KEY_RECENT_SUCCESS_TTL:
+            state = "recent_success"
+
+        keys.append(
+            {
+                "index": index,
+                "key": _gemini_key_label(api_key),
+                "state": state,
+            }
+        )
+
+    return {
+        "model": GEMINI_MODEL,
+        "keyCount": len(GEMINI_API_KEYS),
+        "keys": keys,
+    }
 
 def _handle_internet_search(request: UserProfileAI) -> Optional[Dict[str, Any]]:
     if not request.use_internet_search or not (request.search_query or request.objective): return None
@@ -562,18 +687,24 @@ def _handle_internet_search(request: UserProfileAI) -> Optional[Dict[str, Any]]:
 
 @app.post("/recommend")
 async def recommend_recipes(request: UserProfileAI, debug: Annotated[bool, Query()] = False) -> Dict[str, Any]:
+    trace_id = uuid.uuid4().hex[:10]
     fallback = _fallback_recommendations(request)
-    if genai is None or not GEMINI_API_KEYS: return fallback
-    if internet_res := _handle_internet_search(request): return internet_res
+    if genai is None or not GEMINI_API_KEYS:
+        _emit_gemini_marker("recommend", trace_id, "disabled", detail="GenAI not configured")
+        return fallback
+    if internet_res := _handle_internet_search(request):
+        return internet_res
     
     payload = _compact_recommendation_payload(request)
     cache_key = _compact_gemini_cache_key("recommend", payload)
-    if cached := _get_cached_gemini_response(cache_key): return cached
+    if cached := _get_cached_gemini_response(cache_key):
+        _emit_gemini_marker("recommend", trace_id, "cache_hit", cache_hit=True)
+        return cached
 
     prompt = _build_gemini_prompt("recommend", payload)
     config = {"response_mime_type": JSON_MIME_TYPE}
     try:
-        resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
+        resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES, trace_id=trace_id, endpoint="recommend")
         data = _parse_json_or_fallback(resp.text, fallback)
         if debug: data = _format_debug_response(data, prompt, payload, config, None, getattr(resp, "text", ""))
         
@@ -586,17 +717,22 @@ async def recommend_recipes(request: UserProfileAI, debug: Annotated[bool, Query
 
 @app.post("/meal-plan")
 async def generate_meal_plan(request: MealPlanRequest, debug: Annotated[bool, Query()] = False) -> Dict[str, Any]:
+    trace_id = uuid.uuid4().hex[:10]
     fallback = _fallback_meal_plan(request)
-    if genai is None or not GEMINI_API_KEYS: return fallback
+    if genai is None or not GEMINI_API_KEYS:
+        _emit_gemini_marker("meal-plan", trace_id, "disabled", detail="GenAI not configured")
+        return fallback
 
     payload = _compact_meal_plan_payload(request)
     cache_key = _compact_gemini_cache_key("meal-plan", payload)
-    if cached := _get_cached_gemini_response(cache_key): return cached
+    if cached := _get_cached_gemini_response(cache_key):
+        _emit_gemini_marker("meal-plan", trace_id, "cache_hit", cache_hit=True)
+        return cached
 
     prompt = _build_gemini_prompt("meal-plan", payload)
     config = {"response_mime_type": JSON_MIME_TYPE}
     try:
-        resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
+        resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES, trace_id=trace_id, endpoint="meal-plan")
         data = _parse_json_or_fallback(resp.text, fallback)
         if debug: data = _format_debug_response(data, prompt, payload, config, None, getattr(resp, "text", ""))
         
@@ -616,17 +752,22 @@ async def generate_meal_plan(request: MealPlanRequest, debug: Annotated[bool, Qu
 
 @app.post("/coach")
 async def coach(request: CoachRequest, debug: Annotated[bool, Query()] = False) -> Dict[str, Any]:
+    trace_id = uuid.uuid4().hex[:10]
     fallback = _fallback_coach(request)
-    if genai is None or not GEMINI_API_KEYS: return fallback
+    if genai is None or not GEMINI_API_KEYS:
+        _emit_gemini_marker("coach", trace_id, "disabled", detail="GenAI not configured")
+        return fallback
 
     payload = {"objective": request.objective, "message": request.message[:500], "context": (request.context or "")[:300]}
     cache_key = _compact_gemini_cache_key("coach", payload)
-    if cached := _get_cached_gemini_response(cache_key): return cached
+    if cached := _get_cached_gemini_response(cache_key):
+        _emit_gemini_marker("coach", trace_id, "cache_hit", cache_hit=True)
+        return cached
 
     prompt = _build_gemini_prompt("coach", payload)
     config = {"response_mime_type": JSON_MIME_TYPE}
     try:
-        resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
+        resp = await _genai_generate_with_retries(prompt, config, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES, trace_id=trace_id, endpoint="coach")
         data = _parse_json_or_fallback(resp.text, fallback)
         if debug: data = _format_debug_response(data, prompt, payload, config, None, getattr(resp, "text", ""))
         
@@ -646,8 +787,9 @@ async def _prewarm_meal_plan(request: MealPlanRequest):
 async def _prewarm_recommend(request: MealPlanRequest):
     profile = UserProfileAI(user_id=request.user_id, objective=request.objective, limit=3, available_recipes=request.available_recipes or [])
     payload = _compact_recommendation_payload(profile)
+    trace_id = uuid.uuid4().hex[:10]
     try:
-        resp = await _genai_generate_with_retries(_build_gemini_prompt("recommend", payload), {"response_mime_type": JSON_MIME_TYPE}, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES)
+        resp = await _genai_generate_with_retries(_build_gemini_prompt("recommend", payload), {"response_mime_type": JSON_MIME_TYPE}, model=GEMINI_MODEL, max_retries=GEMINI_MAX_RETRIES, trace_id=trace_id, endpoint="prewarm-recommend")
         if parsed := _parse_json_or_fallback(getattr(resp, "text", None), _fallback_recommendations(profile)):
             if isinstance(parsed, dict): _store_cached_gemini_response(_compact_gemini_cache_key("recommend", payload), parsed)
     except Exception: pass

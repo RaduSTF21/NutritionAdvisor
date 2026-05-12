@@ -13,12 +13,10 @@ namespace NutritionAdvisor.API.Controllers;
 public class PaymentsController : ControllerBase
 {
     private readonly IPaymentService _paymentService;
-    private readonly IUserRepository _userRepository;
 
-    public PaymentsController(IPaymentService paymentService, IUserRepository userRepository)
+    public PaymentsController(IPaymentService paymentService)
     {
         _paymentService = paymentService;
-        _userRepository = userRepository;
     }
 
     [Authorize]

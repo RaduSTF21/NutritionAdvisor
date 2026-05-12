@@ -43,10 +43,8 @@ public class IngredientRepository : IIngredientRepository
                 .ToListAsync(cancellationToken);
         }
 
-        var lowerTerm = searchTerm.ToLowerInvariant();
-
         return await _context.Ingredients
-            .Where(i => i.Name.ToLower().Contains(lowerTerm))
+            .Where(i => i.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
             .OrderBy(i => i.Name)
             .Take(20)
             .ToListAsync(cancellationToken);
