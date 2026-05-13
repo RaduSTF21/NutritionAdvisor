@@ -14,6 +14,7 @@ namespace NutritionAdvisor.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20260427153105_AddUserSubscriptionFields")]
+    
     partial class AddUserSubscriptionFields
     {
         /// <inheritdoc />

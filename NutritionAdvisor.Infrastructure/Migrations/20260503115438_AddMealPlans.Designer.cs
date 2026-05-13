@@ -14,6 +14,7 @@ namespace NutritionAdvisor.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20260503115438_AddMealPlans")]
+    
     partial class AddMealPlans
     {
         /// <inheritdoc />
