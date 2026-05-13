@@ -14,6 +14,7 @@ namespace NutritionAdvisor.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20260505122546_FixPendingModelChanges")]
+    
     partial class FixPendingModelChanges
     {
         /// <inheritdoc />

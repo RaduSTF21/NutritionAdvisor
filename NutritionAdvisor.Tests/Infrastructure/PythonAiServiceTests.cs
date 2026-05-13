@@ -62,15 +62,17 @@ public class PythonAiServiceTests
     }
 
     [Fact]
-    public async Task PrewarmAsync_IgnoresExceptions()
-    {
-        var handler = new FakeHandler(_ => throw new HttpRequestException("network"));
-        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
-        var options = Options.Create(new PythonAiOptions { BaseUrl = "http://localhost", TimeoutSeconds = 1 });
-        var svc = new PythonAiService(client, options);
+public async Task PrewarmAsync_IgnoresExceptions()
+{
+    var handler = new FakeHandler(_ => throw new HttpRequestException("network"));
+    var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+    var options = Options.Create(new PythonAiOptions { BaseUrl = "http://localhost", TimeoutSeconds = 1 });
+    var svc = new PythonAiService(client, options);
 
-        var prewarmReq = new AiMealPlanRequestModel("user", null, 1, new List<string>(), new List<string>(), new List<AiRecipeDto>());
-        // should not throw
-        await svc.PrewarmAsync(prewarmReq);
-    }
+    var prewarmReq = new AiMealPlanRequestModel("user", null, 1, new List<string>(), new List<string>(), new List<AiRecipeDto>());
+    
+    // Verificăm că nu se aruncă nicio excepție (S2699 fix)
+    var exception = await Record.ExceptionAsync(() => svc.PrewarmAsync(prewarmReq));
+    Assert.Null(exception);
+}
 }

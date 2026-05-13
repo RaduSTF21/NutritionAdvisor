@@ -10,6 +10,17 @@ using NutritionAdvisor.Infrastructure.Options;
 using NutritionAdvisor.Infrastructure.Services;
 using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Hosting;
+using System.IO;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,8 +54,12 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy("RequirePremium", policy => policy.RequireClaim("subscription_plan", "Premium"))
     .AddPolicy("RequireActiveSubscription", policy => policy.RequireAssertion(VerifyActiveSubscription));
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+// --- FIX: Nu înregistra PostgreSQL dacă rulăm Integration Tests ---
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+}
 
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(NutritionAdvisor.Application.UserProfiles.Commands.SaveUserProfile.SaveUserProfileCommand).Assembly));
 
@@ -71,10 +86,14 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// --- EXECUTĂM MIGRAȚIILE ---
-ApplyDatabaseMigrations(app);
+// --- EXECUTĂM MIGRAȚIILE DOAR DACA NU SUNTEM IN TESTING ---
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    ApplyDatabaseMigrations(app);
+}
 
-if (app.Environment.IsDevelopment())
+// --- MODIFICARE: Permitem Swagger/OpenApi și în modul Testing pentru Coverage ---
+if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
     app.MapOpenApi();
     app.UseSwagger();
@@ -85,9 +104,7 @@ else
     app.UseHttpsRedirection();
 }
 
-// --- MIDDLEWARE PENTRU IMAGINI ---
 app.Use(HandleRecipePlaceholderImageAsync);
-
 app.UseCors("AllowBlazorOrigin");
 app.UseStaticFiles();
 app.UseAuthentication();
@@ -95,11 +112,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 await app.RunAsync();
-
-
-// ============================================================================
-// --- METODE EXTRASE PENTRU REDUCEREA COMPLEXITĂȚII COGNITIVE (SonarCloud) ---
-// ============================================================================
 
 static bool VerifyActiveSubscription(AuthorizationHandlerContext context)
 {
@@ -141,7 +153,6 @@ static async Task HandleRecipePlaceholderImageAsync(HttpContext context, Func<Ta
 {
     if (context.Request.Path.StartsWithSegments("/UploadedFiles"))
     {
-        // Variabila a fost creată pe baza structurii host-ului global
         var env = context.RequestServices.GetRequiredService<IWebHostEnvironment>();
         var webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
         var physicalPath = Path.Combine(webRoot, context.Request.Path.Value!.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
@@ -158,4 +169,9 @@ static async Task HandleRecipePlaceholderImageAsync(HttpContext context, Func<Ta
         }
     }
     await next();
+}
+
+public partial class Program
+{
+    protected Program() { }
 }

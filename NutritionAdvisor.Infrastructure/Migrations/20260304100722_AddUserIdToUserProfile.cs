@@ -1,10 +1,12 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace NutritionAdvisor.Infrastructure.Migrations
 {
+    
     public partial class AddUserIdToUserProfile : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
